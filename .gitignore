@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.js
+!esbuild.config.mjs
+*.d.ts
+*.map
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.env
+coverage/

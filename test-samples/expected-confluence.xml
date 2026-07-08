@@ -1,0 +1,47 @@
+<ac:structured-macro ac:name="markdown">
+  <ac:plain-text-body><![CDATA[<h1>Sample PRD</h1>
+<p>This is a sample PRD for testing the Confluence Git Sync plugin.</p>
+<h2>Overview</h2>
+<p>This document describes a hypothetical feature for testing purposes.</p>
+<h2>Problem Statement</h2>
+<p>Users need a way to test the plugin's conversion pipeline.</p>
+<h2>Requirements</h2>
+<ul>
+<li>Requirement 1: The plugin must convert Markdown to Confluence Storage Format</li>
+<li>Requirement 2: The plugin must handle frontmatter</li>
+<li>Requirement 3: The plugin must resolve wiki-links</li>
+</ul>
+<h2>Implementation</h2>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">python</ac:parameter>
+  <ac:plain-text-body><![CDATA[def hello():
+    print("Hello, Confluence!")]]></ac:plain-text-body>
+</ac:structured-macro>
+<h2>Table</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Markdown conversion</td>
+<td>Done</td>
+</tr>
+<tr>
+<td>Frontmatter parsing</td>
+<td>Done</td>
+</tr>
+<tr>
+<td>Wiki-link resolution</td>
+<td>In progress</td>
+</tr>
+</tbody>
+</table>
+<h2>Notes</h2>
+<blockquote>This is a blockquote for testing.</blockquote>
+<p>For more details, see B-1-rag-knowledge-mcp.</p>
+]]></ac:plain-text-body>
+</ac:structured-macro>

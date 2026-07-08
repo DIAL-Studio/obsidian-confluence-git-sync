@@ -1,0 +1,11 @@
+{
+  "id": "obsidian-confluence-git-sync",
+  "name": "Confluence Git Sync",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Publish Obsidian notes to Confluence with Git as source of truth. Idempotent, batch, frontmatter-to-labels, wiki-link resolution, and GitHub Actions CI/CD.",
+  "author": "DIAL Studio",
+  "authorUrl": "https://github.com/DIAL-Studio",
+  "isDesktopOnly": true,
+  "fundingUrl": ""
+}
