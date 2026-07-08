@@ -33,7 +33,7 @@ export class WikiLinkResolver {
       const displayText = alias || target;
 
       // Try to find the target file in the vault
-      const targetFile = this.findFileByBasename(target, vault);
+      const targetFile = this.findTargetByBasename(target, vault);
 
       if (targetFile) {
         const frontmatter = await this.readFrontmatter(targetFile, vault);
@@ -110,7 +110,7 @@ export class WikiLinkResolver {
 
           // Handle arrays: [item1, item2]
           if (value.startsWith("[") && value.endsWith("]")) {
-            value = value.slice(1, -1).split(",").map((s) => s.trim().replace(/['"]/g, ""));
+            value = value.slice(1, -1).split(",").map((s: string) => s.trim().replace(/['"]/g, ""));
           }
           // Handle quoted strings
           else if ((value.startsWith('"') && value.endsWith('"')) || 

@@ -123,20 +123,20 @@ export class MdToConfluenceConverter {
   private convertTables(md: string): string {
     const tableRegex = /^\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/gm;
 
-    return md.replace(tableRegex, (_match, headerRow, bodyRows) => {
+    return md.replace(tableRegex, (_match: string, headerRow: string, bodyRows: string) => {
       const headers = headerRow
         .split("|")
-        .map((h) => h.trim())
-        .filter((h) => h.length > 0);
+        .map((h: string) => h.trim())
+        .filter((h: string) => h.length > 0);
 
       const rows = bodyRows
         .trim()
         .split("\n")
-        .map((row) =>
+        .map((row: string) =>
           row
           .split("|")
-          .map((c) => c.trim())
-          .filter((c) => c.length > 0)
+          .map((c: string) => c.trim())
+          .filter((c: string) => c.length > 0)
         );
 
       let table = "<table>\n<thead>\n<tr>\n";

@@ -89,14 +89,17 @@ export class FrontmatterParser {
     }
 
     // Custom fields
-    if (frontmatter["decision-deadline"]) {
-      properties["decision-deadline"] = frontmatter["decision-deadline"];
+    const decisionDeadline = frontmatter["decision-deadline"];
+    if (decisionDeadline) {
+      properties["decision-deadline"] = String(decisionDeadline);
     }
-    if (frontmatter["related-confluence"]) {
-      properties["related-confluence"] = frontmatter["related-confluence"];
+    const relatedConfluence = frontmatter["related-confluence"];
+    if (relatedConfluence) {
+      properties["related-confluence"] = String(relatedConfluence);
     }
-    if (frontmatter["related-prds"]) {
-      properties["related-prds"] = frontmatter["related-prds"];
+    const relatedPrds = frontmatter["related-prds"];
+    if (relatedPrds) {
+      properties["related-prds"] = String(relatedPrds);
     }
 
     return {

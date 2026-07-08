@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.js
 !esbuild.config.mjs
+!main.js
 *.d.ts
 *.map
 .DS_Store
