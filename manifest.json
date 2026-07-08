@@ -1,5 +1,5 @@
 {
-  "id": "obsidian-confluence-git-sync",
+  "id": "confluence-git-sync",
   "name": "Confluence Git Sync",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",

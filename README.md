@@ -26,7 +26,7 @@ An Obsidian plugin that bridges three worlds: your local vault (authoring), GitH
 ### Manual installation
 
 1. Download the latest release from [GitHub releases](https://github.com/DIAL-Studio/obsidian-confluence-git-sync/releases)
-2. Extract to `{your-vault}/.obsidian/plugins/obsidian-confluence-git-sync/`
+2. Extract to `{your-vault}/.obsidian/plugins/confluence-git-sync/`
 3. Restart Obsidian and enable the plugin
 
 ## Setup
@@ -102,7 +102,7 @@ npm run dev
 ### Project structure
 
 ```
-obsidian-confluence-git-sync/
+confluence-git-sync/
 ├── src/
 │   ├── main.ts                 # Plugin entry point
 │   ├── settings.ts             # Settings tab
