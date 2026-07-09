@@ -24,21 +24,27 @@ export class GitBridge {
       throw new Error("Git repo path not set");
     }
 
-    // Stage all changed files
+    // Debug: log the status matrix to understand what's happening
     const status = await git.statusMatrix({ fs, dir: this.repoPath });
-    let staged = 0;
+    const changes: string[] = [];
+
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-      if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
+      const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
+      if (changed) {
+        changes.push(`${filepath} (head=${headStatus} work=${workDirStatus} stage=${stageStatus})`);
         await git.add({ fs, dir: this.repoPath, filepath });
-        staged++;
       }
     }
 
-    if (staged === 0) {
-      return false; // nothing to commit
+    console.log("[ConfluenceGitSync] Status matrix:", changes.length, "changed files");
+    if (changes.length > 0) {
+      console.log("[ConfluenceGitSync] Staged:", changes);
     }
 
-    // Commit
+    if (changes.length === 0) {
+      return false;
+    }
+
     await git.commit({
       fs,
       dir: this.repoPath,

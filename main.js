@@ -15808,14 +15808,19 @@ var GitBridge = class {
       throw new Error("Git repo path not set");
     }
     const status = await statusMatrix({ fs, dir: this.repoPath });
-    let staged = 0;
+    const changes = [];
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-      if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
+      const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
+      if (changed) {
+        changes.push(`${filepath} (head=${headStatus} work=${workDirStatus} stage=${stageStatus})`);
         await add({ fs, dir: this.repoPath, filepath });
-        staged++;
       }
     }
-    if (staged === 0) {
+    console.log("[ConfluenceGitSync] Status matrix:", changes.length, "changed files");
+    if (changes.length > 0) {
+      console.log("[ConfluenceGitSync] Staged:", changes);
+    }
+    if (changes.length === 0) {
       return false;
     }
     await commit({
