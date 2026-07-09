@@ -83,15 +83,20 @@ export class IdempotentPublisher {
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1&expand=version`;
 
     const response = await this.requestWithAuth(url);
     const data = response.json;
 
     if (data.results && data.results.length > 0) {
+      const page = data.results[0];
+      if (!page.id) {
+        console.warn("Confluence search returned a result without an id", page);
+        return null;
+      }
       return {
-        id: data.results[0].id,
-        version: data.results[0].version.number,
+        id: page.id,
+        version: page.version?.number || 0,
       };
     }
 
