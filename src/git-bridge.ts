@@ -19,17 +19,23 @@ export class GitBridge {
   /**
    * Commit all changes locally. Push is left to the user.
    */
-  async commit(message: string): Promise<void> {
+  async commit(message: string): Promise<boolean> {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
 
     // Stage all changed files
     const status = await git.statusMatrix({ fs, dir: this.repoPath });
+    let staged = 0;
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
       if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
         await git.add({ fs, dir: this.repoPath, filepath });
+        staged++;
       }
+    }
+
+    if (staged === 0) {
+      return false; // nothing to commit
     }
 
     // Commit
@@ -42,6 +48,7 @@ export class GitBridge {
         email: "confluence-git-sync@dial.studio",
       },
     });
+    return true;
   }
 
   /**

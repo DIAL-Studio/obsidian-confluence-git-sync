@@ -157,8 +157,8 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
   private async publishAndCommit() {
     await this.publishAll();
     try {
-      await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
-      new Notice("Committed to Git");
+      const didCommit = await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
+      new Notice(didCommit ? "Committed to Git" : "Published — no changes to commit");
     } catch (e: any) {
       new Notice(`Commit failed: ${e.message}`);
       console.error(e);

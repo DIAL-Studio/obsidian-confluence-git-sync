@@ -15808,10 +15808,15 @@ var GitBridge = class {
       throw new Error("Git repo path not set");
     }
     const status = await statusMatrix({ fs, dir: this.repoPath });
+    let staged = 0;
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
       if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
         await add({ fs, dir: this.repoPath, filepath });
+        staged++;
       }
+    }
+    if (staged === 0) {
+      return false;
     }
     await commit({
       fs,
@@ -15822,6 +15827,7 @@ var GitBridge = class {
         email: "confluence-git-sync@dial.studio"
       }
     });
+    return true;
   }
   /**
    * Get the current branch name.
@@ -16019,8 +16025,8 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
   async publishAndCommit() {
     await this.publishAll();
     try {
-      await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
-      new import_obsidian2.Notice("Committed to Git");
+      const didCommit = await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
+      new import_obsidian2.Notice(didCommit ? "Committed to Git" : "Published \u2014 no changes to commit");
     } catch (e) {
       new import_obsidian2.Notice(`Commit failed: ${e.message}`);
       console.error(e);
