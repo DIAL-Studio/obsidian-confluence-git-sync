@@ -1,6 +1,6 @@
 {
   "name": "obsidian-confluence-git-sync",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Obsidian plugin to publish notes to Confluence with Git as source of truth",
   "main": "main.js",
   "scripts": {
