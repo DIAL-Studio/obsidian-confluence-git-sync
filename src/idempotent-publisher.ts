@@ -109,6 +109,21 @@ export class IdempotentPublisher {
   }
 
   /**
+   * Check if a page is under the given parent page ID by inspecting
+   * its ancestors array. Returns true if the page is a direct child
+   * or descendant of the parent.
+   */
+  private pageIsUnderParent(page: any, parentPageId: string): boolean {
+    const ancestors = page.ancestors;
+    if (!ancestors || !Array.isArray(ancestors)) {
+      // No ancestors means the page is at the root. Accept it if
+      // the parent is also the root, but this is unlikely for our use case.
+      return false;
+    }
+    return ancestors.some((a: any) => a.id === parentPageId);
+  }
+
+  /**
    * Get the current version number of a page by its ID.
    * Returns undefined if the page doesn't exist or is inaccessible.
    */
@@ -135,7 +150,7 @@ export class IdempotentPublisher {
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,ancestors`;
 
     const response = await this.requestWithAuth(url);
     const data = response.json;
@@ -147,7 +162,8 @@ export class IdempotentPublisher {
         (p: any) =>
           p.id &&
           p.status !== "archived" &&
-          p.status !== "trashed"
+          p.status !== "trashed" &&
+          this.pageIsUnderParent(p, this.parentPageId)
       );
 
       if (currentPages.length === 0) {
@@ -289,7 +305,7 @@ export class IdempotentPublisher {
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
     const cql = encodeURIComponent(`title="${title}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space,ancestors&status=any`;
 
     try {
       const response = await this.requestWithAuth(url);
@@ -301,7 +317,8 @@ export class IdempotentPublisher {
             p.id &&
             p.status !== "archived" &&
             p.status !== "trashed" &&
-            p.space?.key === spaceKey
+            p.space?.key === spaceKey &&
+            this.pageIsUnderParent(p, this.parentPageId)
         );
         if (page) {
           return {

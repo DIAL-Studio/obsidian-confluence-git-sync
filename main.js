@@ -10565,6 +10565,18 @@ var IdempotentPublisher = class {
     return pageId;
   }
   /**
+   * Check if a page is under the given parent page ID by inspecting
+   * its ancestors array. Returns true if the page is a direct child
+   * or descendant of the parent.
+   */
+  pageIsUnderParent(page, parentPageId) {
+    const ancestors = page.ancestors;
+    if (!ancestors || !Array.isArray(ancestors)) {
+      return false;
+    }
+    return ancestors.some((a) => a.id === parentPageId);
+  }
+  /**
    * Get the current version number of a page by its ID.
    * Returns undefined if the page doesn't exist or is inaccessible.
    */
@@ -10589,12 +10601,12 @@ var IdempotentPublisher = class {
   async findPageByTitle(title, spaceKey) {
     var _a;
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,ancestors`;
     const response = await this.requestWithAuth(url);
     const data = response.json;
     if (data.results && data.results.length > 0) {
       const currentPages = data.results.filter(
-        (p) => p.id && p.status !== "archived" && p.status !== "trashed"
+        (p) => p.id && p.status !== "archived" && p.status !== "trashed" && this.pageIsUnderParent(p, this.parentPageId)
       );
       if (currentPages.length === 0) {
         return null;
@@ -10705,7 +10717,7 @@ var IdempotentPublisher = class {
   async findPageByTitleFallback(title, spaceKey) {
     var _a;
     const cql = encodeURIComponent(`title="${title}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space,ancestors&status=any`;
     try {
       const response = await this.requestWithAuth(url);
       const data = response.json;
@@ -10713,7 +10725,7 @@ var IdempotentPublisher = class {
         const page = data.results.find(
           (p) => {
             var _a2;
-            return p.id && p.status !== "archived" && p.status !== "trashed" && ((_a2 = p.space) == null ? void 0 : _a2.key) === spaceKey;
+            return p.id && p.status !== "archived" && p.status !== "trashed" && ((_a2 = p.space) == null ? void 0 : _a2.key) === spaceKey && this.pageIsUnderParent(p, this.parentPageId);
           }
         );
         if (page) {
