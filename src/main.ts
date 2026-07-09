@@ -101,6 +101,18 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       callback: () => this.copyLastPublishedLink(),
     });
 
+    this.addCommand({
+      id: "open-in-confluence",
+      name: "Open current note in Confluence",
+      callback: () => this.openInConfluence(),
+    });
+
+    this.addCommand({
+      id: "show-published-refs",
+      name: "Show published references",
+      callback: () => this.showPublishedRefs(),
+    });
+
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
   }
 
@@ -220,6 +232,9 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       // Save for "Copy last published link" command
       this.lastPublished = { title, pageId, url: pageUrl };
 
+      // Write confluence reference back into the note's frontmatter
+      await this.writeConfluenceRef(file, pageId, pageUrl);
+
       // Show notice with clickable button to open in browser
       const notice = new Notice(`Published "${title}"`, 8000);
       (notice as any).noticeEl.innerHTML = `
@@ -234,6 +249,41 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
     }
   }
 
+  /**
+   * Write or update the confluence-page-id and confluence-url fields in the
+   * note's frontmatter so the reference is persistent and accessible later.
+   */
+  private async writeConfluenceRef(file: TFile, pageId: string, pageUrl: string) {
+    const content = await this.app.vault.read(file);
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+
+    if (frontmatterMatch) {
+      // Frontmatter exists — inject or update the fields
+      let fm = frontmatterMatch[1];
+      const idRegex = /^confluence-page-id:.*$/m;
+      const urlRegex = /^confluence-url:.*$/m;
+
+      if (idRegex.test(fm)) {
+        fm = fm.replace(idRegex, `confluence-page-id: ${pageId}`);
+      } else {
+        fm += `\nconfluence-page-id: ${pageId}`;
+      }
+
+      if (urlRegex.test(fm)) {
+        fm = fm.replace(urlRegex, `confluence-url: ${pageUrl}`);
+      } else {
+        fm += `\nconfluence-url: ${pageUrl}`;
+      }
+
+      const newContent = content.replace(frontmatterMatch[0], `---\n${fm}\n---\n`);
+      await this.app.vault.modify(file, newContent);
+    } else {
+      // No frontmatter — create one
+      const newContent = `---\nconfluence-page-id: ${pageId}\nconfluence-url: ${pageUrl}\n---\n\n${content}`;
+      await this.app.vault.modify(file, newContent);
+    }
+  }
+
   private copyLastPublishedLink() {
     if (!this.lastPublished) {
       new Notice("No page published yet");
@@ -241,6 +291,63 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
     }
     navigator.clipboard.writeText(this.lastPublished.url);
     new Notice(`Copied: ${this.lastPublished.url}`);
+  }
+
+  /**
+   * Open the current note's Confluence page in the browser.
+   * Reads confluence-url from the note's frontmatter.
+   */
+  private async openInConfluence() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice("No active file");
+      return;
+    }
+
+    const content = await this.app.vault.read(activeFile);
+    const frontmatter = this.frontmatterParser.parse(content);
+    const url = frontmatter?.["confluence-url"] as string | undefined;
+
+    if (!url) {
+      new Notice("This note has no confluence-url in frontmatter. Publish it first.");
+      return;
+    }
+
+    require("electron").shell.openExternal(url);
+    new Notice(`Opening ${url}`);
+  }
+
+  /**
+   * Show a summary of all published notes in the vault.
+   */
+  private async showPublishedRefs() {
+    const files = this.app.vault.getFiles();
+    const published: { file: string; title: string; url: string }[] = [];
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const frontmatter = this.frontmatterParser.parse(content);
+      if (frontmatter?.["confluence-url"]) {
+        published.push({
+          file: file.path,
+          title: frontmatter.title || file.basename,
+          url: frontmatter["confluence-url"] as string,
+        });
+      }
+    }
+
+    if (published.length === 0) {
+      new Notice("No published notes found");
+      return;
+    }
+
+    let summary = `Published references (${published.length} notes):\n`;
+    for (const p of published) {
+      summary += `  ${p.file} → "${p.title}" (${p.url})\n`;
+    }
+
+    console.log(summary);
+    new Notice(`${published.length} published notes. See console for details.`);
   }
 
   private getSpaceKeyForFile(filePath: string): string {

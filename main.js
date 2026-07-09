@@ -17029,6 +17029,16 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       name: "Copy last published link",
       callback: () => this.copyLastPublishedLink()
     });
+    this.addCommand({
+      id: "open-in-confluence",
+      name: "Open current note in Confluence",
+      callback: () => this.openInConfluence()
+    });
+    this.addCommand({
+      id: "show-published-refs",
+      name: "Show published references",
+      callback: () => this.showPublishedRefs()
+    });
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
   }
   onunload() {
@@ -17121,6 +17131,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       const baseUrl = this.settings.confluenceBaseUrl.replace(/\/+$/, "");
       const pageUrl = `${baseUrl}/spaces/${spaceKey}/pages/${pageId}`;
       this.lastPublished = { title, pageId, url: pageUrl };
+      await this.writeConfluenceRef(file, pageId, pageUrl);
       const notice = new import_obsidian2.Notice(`Published "${title}"`, 8e3);
       notice.noticeEl.innerHTML = `
         Published "<strong>${title}</strong>" to Confluence<br/>
@@ -17133,6 +17144,44 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       console.error(error);
     }
   }
+  /**
+   * Write or update the confluence-page-id and confluence-url fields in the
+   * note's frontmatter so the reference is persistent and accessible later.
+   */
+  async writeConfluenceRef(file, pageId, pageUrl) {
+    const content = await this.app.vault.read(file);
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (frontmatterMatch) {
+      let fm = frontmatterMatch[1];
+      const idRegex = /^confluence-page-id:.*$/m;
+      const urlRegex = /^confluence-url:.*$/m;
+      if (idRegex.test(fm)) {
+        fm = fm.replace(idRegex, `confluence-page-id: ${pageId}`);
+      } else {
+        fm += `
+confluence-page-id: ${pageId}`;
+      }
+      if (urlRegex.test(fm)) {
+        fm = fm.replace(urlRegex, `confluence-url: ${pageUrl}`);
+      } else {
+        fm += `
+confluence-url: ${pageUrl}`;
+      }
+      const newContent = content.replace(frontmatterMatch[0], `---
+${fm}
+---
+`);
+      await this.app.vault.modify(file, newContent);
+    } else {
+      const newContent = `---
+confluence-page-id: ${pageId}
+confluence-url: ${pageUrl}
+---
+
+${content}`;
+      await this.app.vault.modify(file, newContent);
+    }
+  }
   copyLastPublishedLink() {
     if (!this.lastPublished) {
       new import_obsidian2.Notice("No page published yet");
@@ -17140,6 +17189,56 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
     }
     navigator.clipboard.writeText(this.lastPublished.url);
     new import_obsidian2.Notice(`Copied: ${this.lastPublished.url}`);
+  }
+  /**
+   * Open the current note's Confluence page in the browser.
+   * Reads confluence-url from the note's frontmatter.
+   */
+  async openInConfluence() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new import_obsidian2.Notice("No active file");
+      return;
+    }
+    const content = await this.app.vault.read(activeFile);
+    const frontmatter = this.frontmatterParser.parse(content);
+    const url = frontmatter == null ? void 0 : frontmatter["confluence-url"];
+    if (!url) {
+      new import_obsidian2.Notice("This note has no confluence-url in frontmatter. Publish it first.");
+      return;
+    }
+    require("electron").shell.openExternal(url);
+    new import_obsidian2.Notice(`Opening ${url}`);
+  }
+  /**
+   * Show a summary of all published notes in the vault.
+   */
+  async showPublishedRefs() {
+    const files = this.app.vault.getFiles();
+    const published = [];
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const frontmatter = this.frontmatterParser.parse(content);
+      if (frontmatter == null ? void 0 : frontmatter["confluence-url"]) {
+        published.push({
+          file: file.path,
+          title: frontmatter.title || file.basename,
+          url: frontmatter["confluence-url"]
+        });
+      }
+    }
+    if (published.length === 0) {
+      new import_obsidian2.Notice("No published notes found");
+      return;
+    }
+    let summary = `Published references (${published.length} notes):
+`;
+    for (const p of published) {
+      summary += `  ${p.file} \u2192 "${p.title}" (${p.url})
+`;
+    }
+    console.log(summary);
+    new import_obsidian2.Notice(`${published.length} published notes. See console for details.`);
   }
   getSpaceKeyForFile(filePath) {
     for (const [folder, spaceKey] of Object.entries(this.settings.folderSpaceMappings)) {
