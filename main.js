@@ -15809,17 +15809,17 @@ var GitBridge = class {
     }
     const status = await statusMatrix({ fs, dir: this.repoPath });
     const changes = [];
+    const allFiles = [];
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
+      allFiles.push(`${filepath} [h:${headStatus} w:${workDirStatus} s:${stageStatus}]`);
       const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
       if (changed) {
-        changes.push(`${filepath} (head=${headStatus} work=${workDirStatus} stage=${stageStatus})`);
+        changes.push(`${filepath}`);
         await add({ fs, dir: this.repoPath, filepath });
       }
     }
-    console.log("[ConfluenceGitSync] Status matrix:", changes.length, "changed files");
-    if (changes.length > 0) {
-      console.log("[ConfluenceGitSync] Staged:", changes);
-    }
+    console.log("[ConfluenceGitSync] All tracked files:", allFiles);
+    console.log("[ConfluenceGitSync] Changed files:", changes.length, changes);
     if (changes.length === 0) {
       return false;
     }
