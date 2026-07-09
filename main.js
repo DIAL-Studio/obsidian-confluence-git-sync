@@ -10601,7 +10601,7 @@ var IdempotentPublisher = class {
   async findPageByTitle(title, spaceKey) {
     var _a;
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,ancestors`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=${encodeURIComponent("version,ancestors")}`;
     const response = await this.requestWithAuth(url);
     const data = response.json;
     if (data.results && data.results.length > 0) {
@@ -10717,7 +10717,7 @@ var IdempotentPublisher = class {
   async findPageByTitleFallback(title, spaceKey) {
     var _a;
     const cql = encodeURIComponent(`title="${title}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space,ancestors&status=any`;
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=${encodeURIComponent("version,space,ancestors")}&status=any`;
     try {
       const response = await this.requestWithAuth(url);
       const data = response.json;
