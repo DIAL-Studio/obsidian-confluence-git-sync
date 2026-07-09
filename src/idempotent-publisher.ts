@@ -265,8 +265,11 @@ export class IdempotentPublisher {
       const data = response.json;
 
       if (data.results && data.results.length > 0) {
-        const page = data.results[0];
-        if (page.id) {
+        // Skip archived/trashed — same filter as findPageByTitle
+        const page = data.results.find(
+          (p: any) => p.id && p.status !== "archived" && p.status !== "trashed"
+        );
+        if (page) {
           return {
             id: page.id,
             version: page.version?.number || 0,
