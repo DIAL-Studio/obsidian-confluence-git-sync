@@ -7,6 +7,9 @@
  * Uses VaultFsAdapter instead of Node.js fs because Obsidian's
  * renderer process sandboxes the fs module.
  * Uses requestUrl for HTTP operations to avoid CORS.
+ *
+ * Commit strategy mirrors obsidian-git (Vinzent03/obsidian-git):
+ * git.walk() to compare HEAD vs WORKDIR, stage changes, then commit.
  */
 
 // @ts-ignore - isomorphic-git types are incomplete
@@ -24,26 +27,25 @@ export class GitBridge {
     this.fs = new VaultFsAdapter(vault);
   }
 
+  /**
+   * Stage and commit all changed files.
+   * Returns false if nothing was committed.
+   */
   async commit(message: string): Promise<boolean> {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
 
-    const status = await git.statusMatrix({ fs: this.fs, dir: this.repoPath });
-    const changes: string[] = [];
+    const changedFiles = await this.getUnstagedFiles();
+    console.log("[ConfluenceGitSync] Changed files:", changedFiles.length, changedFiles);
 
-    for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-      const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
-      if (changed) {
-        changes.push(`${filepath}`);
-        await git.add({ fs: this.fs, dir: this.repoPath, filepath });
-      }
+    if (changedFiles.length === 0) {
+      return false;
     }
 
-    console.log("[ConfluenceGitSync] Changed files:", changes.length, changes);
-
-    if (changes.length === 0) {
-      return false;
+    // Stage all changed files
+    for (const filepath of changedFiles) {
+      await git.add({ fs: this.fs, dir: this.repoPath, filepath });
     }
 
     await git.commit({
@@ -56,6 +58,34 @@ export class GitBridge {
       },
     });
     return true;
+  }
+
+  /**
+   * Find files that differ between HEAD and working directory.
+   * Uses git.walk() to compare content hashes (OIDs), same as obsidian-git.
+   */
+  private async getUnstagedFiles(): Promise<string[]> {
+    const repo = { fs: this.fs, dir: this.repoPath };
+    const changed: string[] = [];
+
+    await git.walk({
+      ...repo,
+      trees: [git.TREE({ ref: "HEAD" }), git.WORKDIR()],
+      map: async (filepath, [head, workdir]) => {
+        // Compare OIDs — different hash means the file changed
+        const headOid = await head?.oid();
+        const workdirOid = await workdir?.oid();
+
+        if (headOid !== workdirOid) {
+          changed.push(filepath);
+        }
+
+        // Return something to satisfy the walker
+        return null;
+      },
+    });
+
+    return changed;
   }
 
   /**
@@ -76,12 +106,11 @@ export class GitBridge {
 
     const url = remoteInfo.url;
     if (url.startsWith("git@") || url.startsWith("ssh://")) {
-      throw new Error(
-        "SSH remotes are not supported. Please switch to HTTPS."
-      );
+      throw new Error("SSH remotes are not supported. Please switch to HTTPS.");
     }
 
-    const currentBranch = (await git.currentBranch({ fs: this.fs, dir: this.repoPath })) || "main";
+    const currentBranch =
+      (await git.currentBranch({ fs: this.fs, dir: this.repoPath })) || "main";
 
     await git.push({
       fs: this.fs,
@@ -99,9 +128,6 @@ export class GitBridge {
     return true;
   }
 
-  /**
-   * Commit all changes and push to remote.
-   */
   async commitAndPush(message: string, token?: string): Promise<string> {
     const didCommit = await this.commit(message);
     if (!didCommit) {
@@ -112,7 +138,6 @@ export class GitBridge {
       await this.push(token);
       return "Committed and pushed";
     } catch (e: any) {
-      // Push failed but commit succeeded
       console.warn("[ConfluenceGitSync] Push failed, commit saved locally:", e.message);
       return `Committed locally (push failed: ${e.message})`;
     }
@@ -123,20 +148,9 @@ export class GitBridge {
     return branch || "main";
   }
 
-  async getLastCommitHash(): Promise<string> {
-    const log = await git.log({ fs: this.fs, dir: this.repoPath, depth: 1 });
-    if (log.length === 0) throw new Error("No commits found");
-    return log[0].oid;
-  }
-
   async hasUncommittedChanges(): Promise<boolean> {
-    const status = await git.statusMatrix({ fs: this.fs, dir: this.repoPath });
-    for (const [, head, workdir, stage] of status) {
-      if (workdir !== head || workdir !== stage) {
-        return true;
-      }
-    }
-    return false;
+    const files = await this.getUnstagedFiles();
+    return files.length > 0;
   }
 
   private httpClient(token?: string) {

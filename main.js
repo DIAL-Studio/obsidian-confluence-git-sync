@@ -11372,124 +11372,7 @@ function flatFileListToDirectoryStructure(files) {
   }
   return inodes;
 }
-function mode2type(mode) {
-  switch (mode) {
-    case 16384:
-      return "tree";
-    case 33188:
-      return "blob";
-    case 33261:
-      return "blob";
-    case 40960:
-      return "blob";
-    case 57344:
-      return "commit";
-  }
-  throw new InternalError(`Unexpected GitTree entry mode: ${mode.toString(8)}`);
-}
-var GitWalkerIndex = class {
-  constructor({ fs, gitdir, cache }) {
-    this.treePromise = GitIndexManager.acquire(
-      { fs, gitdir, cache },
-      async function(index) {
-        return flatFileListToDirectoryStructure(index.entries);
-      }
-    );
-    const walker = this;
-    this.ConstructEntry = class StageEntry {
-      constructor(fullpath) {
-        this._fullpath = fullpath;
-        this._type = false;
-        this._mode = false;
-        this._stat = false;
-        this._oid = false;
-      }
-      async type() {
-        return walker.type(this);
-      }
-      async mode() {
-        return walker.mode(this);
-      }
-      async stat() {
-        return walker.stat(this);
-      }
-      async content() {
-        return walker.content(this);
-      }
-      async oid() {
-        return walker.oid(this);
-      }
-    };
-  }
-  async readdir(entry) {
-    const filepath = entry._fullpath;
-    const tree = await this.treePromise;
-    const inode = tree.get(filepath);
-    if (!inode)
-      return null;
-    if (inode.type === "blob")
-      return null;
-    if (inode.type !== "tree") {
-      throw new Error(`ENOTDIR: not a directory, scandir '${filepath}'`);
-    }
-    const names = inode.children.map((inode2) => inode2.fullpath);
-    names.sort(compareStrings);
-    return names;
-  }
-  async type(entry) {
-    if (entry._type === false) {
-      await entry.stat();
-    }
-    return entry._type;
-  }
-  async mode(entry) {
-    if (entry._mode === false) {
-      await entry.stat();
-    }
-    return entry._mode;
-  }
-  async stat(entry) {
-    if (entry._stat === false) {
-      const tree = await this.treePromise;
-      const inode = tree.get(entry._fullpath);
-      if (!inode) {
-        throw new Error(
-          `ENOENT: no such file or directory, lstat '${entry._fullpath}'`
-        );
-      }
-      const stats = inode.type === "tree" ? {} : normalizeStats(inode.metadata);
-      entry._type = inode.type === "tree" ? "tree" : mode2type(stats.mode);
-      entry._mode = stats.mode;
-      if (inode.type === "tree") {
-        entry._stat = void 0;
-      } else {
-        entry._stat = stats;
-      }
-    }
-    return entry._stat;
-  }
-  async content(_entry) {
-  }
-  async oid(entry) {
-    if (entry._oid === false) {
-      const tree = await this.treePromise;
-      const inode = tree.get(entry._fullpath);
-      entry._oid = inode.metadata.oid;
-    }
-    return entry._oid;
-  }
-};
 var GitWalkSymbol = Symbol("GitWalkSymbol");
-function STAGE() {
-  const o = /* @__PURE__ */ Object.create(null);
-  Object.defineProperty(o, GitWalkSymbol, {
-    value: function({ fs, gitdir, cache }) {
-      return new GitWalkerIndex({ fs, gitdir, cache });
-    }
-  });
-  Object.freeze(o);
-  return o;
-}
 var NotFoundError = class _NotFoundError extends BaseError {
   /**
    * @param {string} what
@@ -14421,7 +14304,7 @@ async function _walk({
     return flatten;
   },
   // The default iterate function walks all children concurrently
-  iterate = (walk, children) => Promise.all([...children].map(walk))
+  iterate = (walk2, children) => Promise.all([...children].map(walk2))
 }) {
   const walkers = trees.map(
     (proxy) => proxy[GitWalkSymbol]({ fs, dir, gitdir, cache })
@@ -14447,17 +14330,17 @@ async function _walk({
       children: unionOfIterators(iterators)
     };
   };
-  const walk = async (root2) => {
+  const walk2 = async (root2) => {
     const { entries, children } = await unionWalkerFromReaddir(root2);
     const fullpath = entries.find((entry) => entry && entry._fullpath)._fullpath;
     const parent = await map2(fullpath, entries);
     if (parent !== null) {
-      let walkedChildren = await iterate(walk, children);
+      let walkedChildren = await iterate(walk2, children);
       walkedChildren = walkedChildren.filter((x) => x !== void 0);
       return reduce(parent, walkedChildren);
     }
   };
-  return walk(root);
+  return walk2(root);
 }
 async function rmRecursive(fs, filepath) {
   const entries = await fs.readdir(filepath);
@@ -15254,80 +15137,6 @@ async function constructTree({ fs, gitdir, inode, dryRun }) {
   });
   return oid;
 }
-async function resolveFilepath({ fs, cache, gitdir, oid, filepath }) {
-  if (filepath.startsWith("/")) {
-    throw new InvalidFilepathError("leading-slash");
-  } else if (filepath.endsWith("/")) {
-    throw new InvalidFilepathError("trailing-slash");
-  }
-  const _oid = oid;
-  const result = await resolveTree({ fs, cache, gitdir, oid });
-  const tree = result.tree;
-  if (filepath === "") {
-    oid = result.oid;
-  } else {
-    const pathArray = filepath.split("/");
-    oid = await _resolveFilepath({
-      fs,
-      cache,
-      gitdir,
-      tree,
-      pathArray,
-      oid: _oid,
-      filepath
-    });
-  }
-  return oid;
-}
-async function _resolveFilepath({
-  fs,
-  cache,
-  gitdir,
-  tree,
-  pathArray,
-  oid,
-  filepath
-}) {
-  const name = pathArray.shift();
-  for (const entry of tree) {
-    if (entry.path === name) {
-      if (pathArray.length === 0) {
-        return entry.oid;
-      } else {
-        const { type: type2, object } = await _readObject({
-          fs,
-          cache,
-          gitdir,
-          oid: entry.oid
-        });
-        if (type2 !== "tree") {
-          throw new ObjectTypeError(oid, type2, "tree", filepath);
-        }
-        tree = GitTree.from(object);
-        return _resolveFilepath({
-          fs,
-          cache,
-          gitdir,
-          tree,
-          pathArray,
-          oid,
-          filepath
-        });
-      }
-    }
-  }
-  throw new NotFoundError(`file or directory found at "${oid}:${filepath}"`);
-}
-var worthWalking = (filepath, root) => {
-  if (filepath === "." || root == null || root.length === 0 || root === ".") {
-    return true;
-  }
-  if (root.length >= filepath.length) {
-    return root.startsWith(filepath);
-  } else {
-    return filepath.startsWith(root);
-  }
-};
 var abbreviateRx = /^refs\/(heads\/|tags\/|remotes\/)?(.*)/;
 function abbreviateRef(ref) {
   const match = abbreviateRx.exec(ref);
@@ -16193,234 +16002,6 @@ async function listRemotes({ fs, dir, gitdir = join(dir, ".git") }) {
     throw err;
   }
 }
-function compareAge(a, b) {
-  return a.committer.timestamp - b.committer.timestamp;
-}
-var EMPTY_OID = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
-async function resolveFileIdInTree({ fs, cache, gitdir, oid, fileId }) {
-  if (fileId === EMPTY_OID)
-    return;
-  const _oid = oid;
-  let filepath;
-  const result = await resolveTree({ fs, cache, gitdir, oid });
-  const tree = result.tree;
-  if (fileId === result.oid) {
-    filepath = result.path;
-  } else {
-    filepath = await _resolveFileId({
-      fs,
-      cache,
-      gitdir,
-      tree,
-      fileId,
-      oid: _oid
-    });
-    if (Array.isArray(filepath)) {
-      if (filepath.length === 0)
-        filepath = void 0;
-      else if (filepath.length === 1)
-        filepath = filepath[0];
-    }
-  }
-  return filepath;
-}
-async function _resolveFileId({
-  fs,
-  cache,
-  gitdir,
-  tree,
-  fileId,
-  oid,
-  filepaths = [],
-  parentPath = ""
-}) {
-  const walks = tree.entries().map(function(entry) {
-    let result;
-    if (entry.oid === fileId) {
-      result = join(parentPath, entry.path);
-      filepaths.push(result);
-    } else if (entry.type === "tree") {
-      result = _readObject({
-        fs,
-        cache,
-        gitdir,
-        oid: entry.oid
-      }).then(function({ object }) {
-        return _resolveFileId({
-          fs,
-          cache,
-          gitdir,
-          tree: GitTree.from(object),
-          fileId,
-          oid,
-          filepaths,
-          parentPath: join(parentPath, entry.path)
-        });
-      });
-    }
-    return result;
-  });
-  await Promise.all(walks);
-  return filepaths;
-}
-async function _log({
-  fs,
-  cache,
-  gitdir,
-  filepath,
-  ref,
-  depth,
-  since,
-  force,
-  follow
-}) {
-  const sinceTimestamp = typeof since === "undefined" ? void 0 : Math.floor(since.valueOf() / 1e3);
-  const commits = [];
-  const shallowCommits = await GitShallowManager.read({ fs, gitdir });
-  const oid = await GitRefManager.resolve({ fs, gitdir, ref });
-  const tips = [await _readCommit({ fs, cache, gitdir, oid })];
-  let lastFileOid;
-  let lastCommit;
-  let isOk;
-  function endCommit(commit2) {
-    if (isOk && filepath)
-      commits.push(commit2);
-  }
-  while (tips.length > 0) {
-    const commit2 = tips.pop();
-    if (sinceTimestamp !== void 0 && commit2.commit.committer.timestamp <= sinceTimestamp) {
-      break;
-    }
-    if (filepath) {
-      let vFileOid;
-      try {
-        vFileOid = await resolveFilepath({
-          fs,
-          cache,
-          gitdir,
-          oid: commit2.commit.tree,
-          filepath
-        });
-        if (lastCommit && lastFileOid !== vFileOid) {
-          commits.push(lastCommit);
-        }
-        lastFileOid = vFileOid;
-        lastCommit = commit2;
-        isOk = true;
-      } catch (e) {
-        if (e instanceof NotFoundError) {
-          let found = follow && lastFileOid;
-          if (found) {
-            found = await resolveFileIdInTree({
-              fs,
-              cache,
-              gitdir,
-              oid: commit2.commit.tree,
-              fileId: lastFileOid
-            });
-            if (found) {
-              if (Array.isArray(found)) {
-                if (lastCommit) {
-                  const lastFound = await resolveFileIdInTree({
-                    fs,
-                    cache,
-                    gitdir,
-                    oid: lastCommit.commit.tree,
-                    fileId: lastFileOid
-                  });
-                  if (Array.isArray(lastFound)) {
-                    found = found.filter((p) => lastFound.indexOf(p) === -1);
-                    if (found.length === 1) {
-                      found = found[0];
-                      filepath = found;
-                      if (lastCommit)
-                        commits.push(lastCommit);
-                    } else {
-                      found = false;
-                      if (lastCommit)
-                        commits.push(lastCommit);
-                      break;
-                    }
-                  }
-                }
-              } else {
-                filepath = found;
-                if (lastCommit)
-                  commits.push(lastCommit);
-              }
-            }
-          }
-          if (!found) {
-            if (isOk && lastFileOid) {
-              commits.push(lastCommit);
-              if (!force)
-                break;
-            }
-            if (!force && !follow)
-              throw e;
-          }
-          lastCommit = commit2;
-          isOk = false;
-        } else
-          throw e;
-      }
-    } else {
-      commits.push(commit2);
-    }
-    if (depth !== void 0 && commits.length === depth) {
-      endCommit(commit2);
-      break;
-    }
-    if (!shallowCommits.has(commit2.oid)) {
-      for (const oid2 of commit2.commit.parent) {
-        const commit3 = await _readCommit({ fs, cache, gitdir, oid: oid2 });
-        if (!tips.map((commit4) => commit4.oid).includes(commit3.oid)) {
-          tips.push(commit3);
-        }
-      }
-    }
-    if (tips.length === 0) {
-      endCommit(commit2);
-    }
-    tips.sort((a, b) => compareAge(a.commit, b.commit));
-  }
-  return commits;
-}
-async function log({
-  fs,
-  dir,
-  gitdir = join(dir, ".git"),
-  filepath,
-  ref = "HEAD",
-  depth,
-  since,
-  // Date
-  force,
-  follow,
-  cache = {}
-}) {
-  try {
-    assertParameter("fs", fs);
-    assertParameter("gitdir", gitdir);
-    assertParameter("ref", ref);
-    const fsp = new FileSystem(fs);
-    const updatedGitdir = await discoverGitdir({ fsp, dotgit: gitdir });
-    return await _log({
-      fs: fsp,
-      cache,
-      gitdir: updatedGitdir,
-      filepath,
-      ref,
-      depth,
-      since,
-      force,
-      follow
-    });
-  } catch (err) {
-    err.caller = "git.log";
-    throw err;
-  }
-}
 var types2 = {
   commit: 16,
   tree: 32,
@@ -16492,13 +16073,13 @@ async function listCommitsAndTags({
     }
   }
   const visited = /* @__PURE__ */ new Set();
-  async function walk(oid) {
+  async function walk2(oid) {
     visited.add(oid);
     const { type: type2, object } = await _readObject({ fs, cache, gitdir, oid });
     if (type2 === "tag") {
       const tag = GitAnnotatedTag.from(object);
       const commit2 = tag.headers().object;
-      return walk(commit2);
+      return walk2(commit2);
     }
     if (type2 !== "commit") {
       throw new ObjectTypeError(oid, type2, "commit");
@@ -16508,13 +16089,13 @@ async function listCommitsAndTags({
       const parents = commit2.headers().parent;
       for (oid of parents) {
         if (!finishingSet.has(oid) && !visited.has(oid)) {
-          await walk(oid);
+          await walk2(oid);
         }
       }
     }
   }
   for (const oid of startingSet) {
-    await walk(oid);
+    await walk2(oid);
   }
   return visited;
 }
@@ -16526,7 +16107,7 @@ async function listObjects({
   oids
 }) {
   const visited = /* @__PURE__ */ new Set();
-  async function walk(oid) {
+  async function walk2(oid) {
     if (visited.has(oid))
       return;
     visited.add(oid);
@@ -16534,11 +16115,11 @@ async function listObjects({
     if (type2 === "tag") {
       const tag = GitAnnotatedTag.from(object);
       const obj = tag.headers().object;
-      await walk(obj);
+      await walk2(obj);
     } else if (type2 === "commit") {
       const commit2 = GitCommit.from(object);
       const tree = commit2.headers().tree;
-      await walk(tree);
+      await walk2(tree);
     } else if (type2 === "tree") {
       const tree = GitTree.from(object);
       for (const entry of tree) {
@@ -16546,13 +16127,13 @@ async function listObjects({
           visited.add(entry.oid);
         }
         if (entry.type === "tree") {
-          await walk(entry.oid);
+          await walk2(entry.oid);
         }
       }
     }
   }
   for (const oid of oids) {
-    await walk(oid);
+    await walk2(oid);
   }
   return visited;
 }
@@ -16866,81 +16447,34 @@ async function push({
     throw err;
   }
 }
-async function statusMatrix({
-  fs: _fs,
+async function walk({
+  fs,
   dir,
   gitdir = join(dir, ".git"),
-  ref = "HEAD",
-  filepaths = ["."],
-  filter,
-  cache = {},
-  ignored: shouldIgnore = false,
-  refresh = true
+  trees,
+  map: map2,
+  reduce,
+  iterate,
+  cache = {}
 }) {
   try {
-    assertParameter("fs", _fs);
+    assertParameter("fs", fs);
     assertParameter("gitdir", gitdir);
-    assertParameter("ref", ref);
-    const fs = new FileSystem(_fs);
-    const updatedGitdir = await discoverGitdir({ fsp: fs, dotgit: gitdir });
+    assertParameter("trees", trees);
+    const fsp = new FileSystem(fs);
+    const updatedGitdir = await discoverGitdir({ fsp, dotgit: gitdir });
     return await _walk({
-      fs,
+      fs: fsp,
       cache,
       dir,
       gitdir: updatedGitdir,
-      trees: [TREE({ ref }), WORKDIR({ refresh }), STAGE()],
-      map: async function(filepath, [head, workdir, stage]) {
-        if (!head && !stage && workdir) {
-          if (!shouldIgnore) {
-            const isIgnored = await GitIgnoreManager.isIgnored({
-              fs,
-              dir,
-              filepath
-            });
-            if (isIgnored) {
-              return null;
-            }
-          }
-        }
-        if (!filepaths.some((base) => worthWalking(filepath, base))) {
-          return null;
-        }
-        if (filter) {
-          if (!filter(filepath))
-            return;
-        }
-        const [headType, workdirType, stageType] = await Promise.all([
-          head && head.type(),
-          workdir && workdir.type(),
-          stage && stage.type()
-        ]);
-        const isBlob = [headType, workdirType, stageType].includes("blob");
-        if ((headType === "tree" || headType === "special") && !isBlob)
-          return;
-        if (headType === "commit")
-          return null;
-        if ((workdirType === "tree" || workdirType === "special") && !isBlob)
-          return;
-        if (stageType === "commit")
-          return null;
-        if ((stageType === "tree" || stageType === "special") && !isBlob)
-          return;
-        const headOid = headType === "blob" ? await head.oid() : void 0;
-        const stageOid = stageType === "blob" ? await stage.oid() : void 0;
-        let workdirOid;
-        if (headType !== "blob" && workdirType === "blob" && stageType !== "blob") {
-          workdirOid = "42";
-        } else if (workdirType === "blob") {
-          workdirOid = await workdir.oid();
-        }
-        const entry = [void 0, headOid, workdirOid, stageOid];
-        const result = entry.map((value) => entry.indexOf(value));
-        result.shift();
-        return [filepath, ...result];
-      }
+      trees,
+      map: map2,
+      reduce,
+      iterate
     });
   } catch (err) {
-    err.caller = "git.statusMatrix";
+    err.caller = "git.walk";
     throw err;
   }
 }
@@ -17039,22 +16573,21 @@ var GitBridge = class {
     this.repoPath = repoPath;
     this.fs = new VaultFsAdapter(vault);
   }
+  /**
+   * Stage and commit all changed files.
+   * Returns false if nothing was committed.
+   */
   async commit(message) {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
-    const status = await statusMatrix({ fs: this.fs, dir: this.repoPath });
-    const changes = [];
-    for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-      const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
-      if (changed) {
-        changes.push(`${filepath}`);
-        await add({ fs: this.fs, dir: this.repoPath, filepath });
-      }
-    }
-    console.log("[ConfluenceGitSync] Changed files:", changes.length, changes);
-    if (changes.length === 0) {
+    const changedFiles = await this.getUnstagedFiles();
+    console.log("[ConfluenceGitSync] Changed files:", changedFiles.length, changedFiles);
+    if (changedFiles.length === 0) {
       return false;
+    }
+    for (const filepath of changedFiles) {
+      await add({ fs: this.fs, dir: this.repoPath, filepath });
     }
     await commit({
       fs: this.fs,
@@ -17066,6 +16599,27 @@ var GitBridge = class {
       }
     });
     return true;
+  }
+  /**
+   * Find files that differ between HEAD and working directory.
+   * Uses git.walk() to compare content hashes (OIDs), same as obsidian-git.
+   */
+  async getUnstagedFiles() {
+    const repo = { fs: this.fs, dir: this.repoPath };
+    const changed = [];
+    await walk({
+      ...repo,
+      trees: [TREE({ ref: "HEAD" }), WORKDIR()],
+      map: async (filepath, [head, workdir]) => {
+        const headOid = await (head == null ? void 0 : head.oid());
+        const workdirOid = await (workdir == null ? void 0 : workdir.oid());
+        if (headOid !== workdirOid) {
+          changed.push(filepath);
+        }
+        return null;
+      }
+    });
+    return changed;
   }
   /**
    * Push committed changes to the remote.
@@ -17083,9 +16637,7 @@ var GitBridge = class {
     }
     const url = remoteInfo.url;
     if (url.startsWith("git@") || url.startsWith("ssh://")) {
-      throw new Error(
-        "SSH remotes are not supported. Please switch to HTTPS."
-      );
+      throw new Error("SSH remotes are not supported. Please switch to HTTPS.");
     }
     const currentBranch2 = await currentBranch({ fs: this.fs, dir: this.repoPath }) || "main";
     await push({
@@ -17102,9 +16654,6 @@ var GitBridge = class {
     });
     return true;
   }
-  /**
-   * Commit all changes and push to remote.
-   */
   async commitAndPush(message, token) {
     const didCommit = await this.commit(message);
     if (!didCommit) {
@@ -17122,20 +16671,9 @@ var GitBridge = class {
     const branch = await currentBranch({ fs: this.fs, dir: this.repoPath });
     return branch || "main";
   }
-  async getLastCommitHash() {
-    const log2 = await log({ fs: this.fs, dir: this.repoPath, depth: 1 });
-    if (log2.length === 0)
-      throw new Error("No commits found");
-    return log2[0].oid;
-  }
   async hasUncommittedChanges() {
-    const status = await statusMatrix({ fs: this.fs, dir: this.repoPath });
-    for (const [, head, workdir, stage] of status) {
-      if (workdir !== head || workdir !== stage) {
-        return true;
-      }
-    }
-    return false;
+    const files = await this.getUnstagedFiles();
+    return files.length > 0;
   }
   httpClient(token) {
     return {
