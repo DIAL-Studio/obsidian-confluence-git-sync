@@ -10520,6 +10520,7 @@ var IdempotentPublisher = class {
    * Returns the Confluence page ID.
    */
   async publish(title, storageFormat, spaceKey, tags, properties) {
+    var _a, _b;
     const targetSpace = spaceKey || this.spaceKey;
     const existingPage = await this.findPageByTitle(title, targetSpace);
     let pageId;
@@ -10527,7 +10528,21 @@ var IdempotentPublisher = class {
       pageId = existingPage.id;
       await this.updatePage(pageId, title, storageFormat, existingPage.version);
     } else {
-      pageId = await this.createPage(title, storageFormat, targetSpace);
+      try {
+        pageId = await this.createPage(title, storageFormat, targetSpace);
+      } catch (createError) {
+        if (((_a = createError.message) == null ? void 0 : _a.includes("already exists")) || ((_b = createError.message) == null ? void 0 : _b.includes("A page with this title already exists"))) {
+          const fallbackPage = await this.findPageByTitleFallback(title, targetSpace);
+          if (fallbackPage) {
+            pageId = fallbackPage.id;
+            await this.updatePage(pageId, title, storageFormat, fallbackPage.version);
+          } else {
+            throw createError;
+          }
+        } else {
+          throw createError;
+        }
+      }
     }
     if (tags && tags.length > 0) {
       await this.applyLabels(pageId, tags);
@@ -10552,7 +10567,7 @@ var IdempotentPublisher = class {
     const data = response.json;
     if (data.results && data.results.length > 0) {
       const currentPages = data.results.filter(
-        (p) => p.status === "current" && p.id
+        (p) => p.id && p.status !== "archived" && p.status !== "trashed"
       );
       if (currentPages.length === 0) {
         return null;
@@ -10654,6 +10669,32 @@ var IdempotentPublisher = class {
         }
       }
     }
+  }
+  /**
+   * Fallback search that returns a page regardless of status.
+   * Used when createPage fails with "already exists" — the page might be
+   * in an unexpected status (e.g. draft) that findPageByTitle filtered out.
+   */
+  async findPageByTitleFallback(title, spaceKey) {
+    var _a;
+    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version&status=any`;
+    try {
+      const response = await this.requestWithAuth(url);
+      const data = response.json;
+      if (data.results && data.results.length > 0) {
+        const page = data.results[0];
+        if (page.id) {
+          return {
+            id: page.id,
+            version: ((_a = page.version) == null ? void 0 : _a.number) || 0
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Fallback search also failed", e);
+    }
+    return null;
   }
   /**
    * Make an authenticated request to Confluence using Obsidian's requestUrl().

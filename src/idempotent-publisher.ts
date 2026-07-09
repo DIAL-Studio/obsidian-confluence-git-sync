@@ -59,7 +59,27 @@ export class IdempotentPublisher {
       await this.updatePage(pageId, title, storageFormat, existingPage.version);
     } else {
       // Create new page
-      pageId = await this.createPage(title, storageFormat, targetSpace);
+      try {
+        pageId = await this.createPage(title, storageFormat, targetSpace);
+      } catch (createError: any) {
+        // If creation fails because a page with this title already exists
+        // (it could be a draft or have a status we filtered out), find it
+        // without any status filter and update it instead.
+        if (
+          createError.message?.includes("already exists") ||
+          createError.message?.includes("A page with this title already exists")
+        ) {
+          const fallbackPage = await this.findPageByTitleFallback(title, targetSpace);
+          if (fallbackPage) {
+            pageId = fallbackPage.id;
+            await this.updatePage(pageId, title, storageFormat, fallbackPage.version);
+          } else {
+            throw createError;
+          }
+        } else {
+          throw createError;
+        }
+      }
     }
 
     // Apply labels
@@ -93,9 +113,10 @@ export class IdempotentPublisher {
     const data = response.json;
 
     if (data.results && data.results.length > 0) {
-      // Filter out archived/trashed pages — CQL status=current is unreliable
+      // Only exclude archived and trashed pages — draft pages are updatable
+      // and should not trigger duplicate-tile errors on create
       const currentPages = data.results.filter(
-        (p: any) => p.status === "current" && p.id
+        (p: any) => p.id && p.status !== "archived" && p.status !== "trashed"
       );
 
       if (currentPages.length === 0) {
@@ -225,6 +246,38 @@ export class IdempotentPublisher {
         }
       }
     }
+  }
+
+  /**
+   * Fallback search that returns a page regardless of status.
+   * Used when createPage fails with "already exists" — the page might be
+   * in an unexpected status (e.g. draft) that findPageByTitle filtered out.
+   */
+  private async findPageByTitleFallback(
+    title: string,
+    spaceKey: string
+  ): Promise<{ id: string; version: number } | null> {
+    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version&status=any`;
+
+    try {
+      const response = await this.requestWithAuth(url);
+      const data = response.json;
+
+      if (data.results && data.results.length > 0) {
+        const page = data.results[0];
+        if (page.id) {
+          return {
+            id: page.id,
+            version: page.version?.number || 0,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Fallback search also failed", e);
+    }
+
+    return null;
   }
 
   /**
