@@ -16977,6 +16977,11 @@ var DEFAULT_SETTINGS = {
   folderSpaceMappings: {}
 };
 var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
+  constructor() {
+    super(...arguments);
+    /** Last published page info, used by "Copy last published link" command */
+    this.lastPublished = null;
+  }
   async onload() {
     await this.loadSettings();
     this.converter = new MdToConfluenceConverter();
@@ -17018,6 +17023,11 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
     });
     this.addRibbonIcon("upload-cloud", "Publish current note to Confluence", () => {
       this.publishCurrentNote();
+    });
+    this.addCommand({
+      id: "copy-last-published-link",
+      name: "Copy last published link",
+      callback: () => this.copyLastPublishedLink()
     });
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
   }
@@ -17108,11 +17118,28 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       const storageFormat = this.converter.convert(resolvedContent);
       const spaceKey = this.getSpaceKeyForFile(file.path);
       const pageId = await this.publisher.publish(title, storageFormat, spaceKey, tags);
-      new import_obsidian2.Notice(`Published "${title}" to Confluence (page ID: ${pageId})`);
+      const baseUrl = this.settings.confluenceBaseUrl.replace(/\/+$/, "");
+      const pageUrl = `${baseUrl}/spaces/${spaceKey}/pages/${pageId}`;
+      this.lastPublished = { title, pageId, url: pageUrl };
+      const notice = new import_obsidian2.Notice(`Published "${title}"`, 8e3);
+      notice.noticeEl.innerHTML = `
+        Published "<strong>${title}</strong>" to Confluence<br/>
+        <a href="#" onclick="require('electron').shell.openExternal('${pageUrl}'); return false;">Open in browser</a>
+        &nbsp;\xB7&nbsp;
+        <span style="cursor:pointer;text-decoration:underline;" onclick="navigator.clipboard.writeText('${pageUrl}')">Copy link</span>
+      `;
     } catch (error) {
       new import_obsidian2.Notice(`Failed to publish "${file.name}": ${error.message}`);
       console.error(error);
     }
+  }
+  copyLastPublishedLink() {
+    if (!this.lastPublished) {
+      new import_obsidian2.Notice("No page published yet");
+      return;
+    }
+    navigator.clipboard.writeText(this.lastPublished.url);
+    new import_obsidian2.Notice(`Copied: ${this.lastPublished.url}`);
   }
   getSpaceKeyForFile(filePath) {
     for (const [folder, spaceKey] of Object.entries(this.settings.folderSpaceMappings)) {

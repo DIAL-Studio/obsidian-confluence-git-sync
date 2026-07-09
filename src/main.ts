@@ -41,6 +41,9 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
   private gitBridge: GitBridge;
   private githubActionsGen: GithubActionsGen;
 
+  /** Last published page info, used by "Copy last published link" command */
+  private lastPublished: { title: string; pageId: string; url: string } | null = null;
+
   async onload() {
     await this.loadSettings();
 
@@ -90,6 +93,12 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
     // Ribbon icon for quick access to publish current note
     this.addRibbonIcon("upload-cloud", "Publish current note to Confluence", () => {
       this.publishCurrentNote();
+    });
+
+    this.addCommand({
+      id: "copy-last-published-link",
+      name: "Copy last published link",
+      callback: () => this.copyLastPublishedLink(),
     });
 
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
@@ -204,11 +213,34 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       // Publish
       const pageId = await this.publisher.publish(title, storageFormat, spaceKey, tags);
 
-      new Notice(`Published "${title}" to Confluence (page ID: ${pageId})`);
+      // Build Confluence URL
+      const baseUrl = this.settings.confluenceBaseUrl.replace(/\/+$/, "");
+      const pageUrl = `${baseUrl}/spaces/${spaceKey}/pages/${pageId}`;
+
+      // Save for "Copy last published link" command
+      this.lastPublished = { title, pageId, url: pageUrl };
+
+      // Show notice with clickable button to open in browser
+      const notice = new Notice(`Published "${title}"`, 8000);
+      (notice as any).noticeEl.innerHTML = `
+        Published "<strong>${title}</strong>" to Confluence<br/>
+        <a href="#" onclick="require('electron').shell.openExternal('${pageUrl}'); return false;">Open in browser</a>
+        &nbsp;·&nbsp;
+        <span style="cursor:pointer;text-decoration:underline;" onclick="navigator.clipboard.writeText('${pageUrl}')">Copy link</span>
+      `;
     } catch (error) {
       new Notice(`Failed to publish "${file.name}": ${error.message}`);
       console.error(error);
     }
+  }
+
+  private copyLastPublishedLink() {
+    if (!this.lastPublished) {
+      new Notice("No page published yet");
+      return;
+    }
+    navigator.clipboard.writeText(this.lastPublished.url);
+    new Notice(`Copied: ${this.lastPublished.url}`);
   }
 
   private getSpaceKeyForFile(filePath: string): string {
