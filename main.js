@@ -7095,9 +7095,7 @@ var MdToConfluenceConverter = class {
     content = this.convertHeadings(content);
     content = this.convertLists(content);
     content = this.convertInlineFormatting(content);
-    return `<ac:structured-macro ac:name="markdown">
-  <ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>
-</ac:structured-macro>`;
+    return content;
   }
   convertHeadings(md) {
     return md.replace(/^(#{1,6})\s+(.+)$/gm, (_match, hashes, text) => {

@@ -53,10 +53,10 @@ export class MdToConfluenceConverter {
     // Convert inline formatting
     content = this.convertInlineFormatting(content);
 
-    // Wrap in Confluence Storage Format envelope
-    return `<ac:structured-macro ac:name="markdown">
-  <ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>
-</ac:structured-macro>`;
+    // Return XHTML directly — Confluence Storage Format accepts it.
+    // Tables, headings, lists, etc. are rendered as regular XHTML.
+    // Code blocks and callouts use Confluence macros (ac:structured-macro).
+    return content;
   }
 
   private convertHeadings(md: string): string {
