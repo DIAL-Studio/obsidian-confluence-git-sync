@@ -41,6 +41,7 @@ An Obsidian plugin that bridges three worlds: your local vault (authoring), GitH
 3. (Optional) Configure Git:
    - **Repo path**: local path to your git repository
    - **Branch**: `main`
+   - **GitHub token (for push)**: personal access token with repo scope (generate at https://github.com/settings/tokens)
    - **Auto-commit on publish**: yes/no
 4. (Optional) Configure file patterns:
    - **Include pattern**: `prds/B-*.md`
@@ -54,8 +55,11 @@ An Obsidian plugin that bridges three worlds: your local vault (authoring), GitH
 |---------|-------------|
 | `Confluence Git Sync: Publish current note` | Publish the active note to Confluence |
 | `Confluence Git Sync: Publish all` | Publish all notes matching the include pattern |
-| `Confluence Git Sync: Publish and commit` | Publish + git commit + git push |
+| `Confluence Git Sync: Publish and commit` | Publish + git commit + push to remote |
 | `Confluence Git Sync: Dry-run` | Preview what would change |
+| `Confluence Git Sync: Open current note in Confluence` | Open the published Confluence page for the current note |
+| `Confluence Git Sync: Show published references` | List all notes with Confluence URLs in the console |
+| `Confluence Git Sync: Copy last published link` | Copy the URL of the last published page |
 | `Confluence Git Sync: Generate GitHub Action` | Create `.github/workflows/publish.yml` |
 
 ### Keyboard shortcuts
@@ -105,12 +109,12 @@ npm run dev
 confluence-git-sync/
 ├── src/
 │   ├── main.ts                 # Plugin entry point
-│   ├── settings.ts             # Settings tab
 │   ├── md-to-confluence.ts     # Markdown → Storage Format converter
 │   ├── frontmatter-parser.ts   # YAML → Confluence properties/labels
 │   ├── wiki-link-resolver.ts   # [[links]] → Confluence page links
-│   ├── idempotent-publisher.ts # Match by title → update or create
-│   ├── git-bridge.ts           # isomorphic-git wrapper
+│   ├── idempotent-publisher.ts # Match by title or page ID → update or create
+│   ├── git-bridge.ts           # isomorphic-git wrapper (commit + push)
+│   ├── vault-fs-adapter.ts     # Vault adapter for isomorphic-git (bypasses sandboxed fs)
 │   └── github-actions-gen.ts   # Generate .github/workflows/publish.yml
 ├── tests/
 │   ├── md-to-confluence.test.ts
