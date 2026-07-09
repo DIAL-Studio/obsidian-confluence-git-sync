@@ -77,23 +77,32 @@ export class IdempotentPublisher {
 
   /**
    * Search for a page by exact title in the given space.
+   *
+   * NOTE: CQL filter `status=current` is unreliable in Confluence Cloud — it
+   * sometimes returns archived pages. We explicitly filter out non-current
+   * pages from the results instead.
    */
   private async findPageByTitle(
     title: string,
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
-    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}" AND status=current`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1&expand=version`;
+    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version`;
 
     const response = await this.requestWithAuth(url);
     const data = response.json;
 
     if (data.results && data.results.length > 0) {
-      const page = data.results[0];
-      if (!page.id) {
-        console.warn("Confluence search returned a result without an id", page);
+      // Filter out archived/trashed pages — CQL status=current is unreliable
+      const currentPages = data.results.filter(
+        (p: any) => p.status === "current" && p.id
+      );
+
+      if (currentPages.length === 0) {
         return null;
       }
+
+      const page = currentPages[0];
       return {
         id: page.id,
         version: page.version?.number || 0,
