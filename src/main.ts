@@ -14,6 +14,7 @@ interface ConfluenceGitSyncSettings {
   confluenceParentPageId: string;
   gitRepoPath: string;
   gitBranch: string;
+  githubToken: string;
   autoCommitOnPublish: boolean;
   includePattern: string;
   folderSpaceMappings: Record<string, string>;
@@ -27,6 +28,7 @@ const DEFAULT_SETTINGS: ConfluenceGitSyncSettings = {
   confluenceParentPageId: "",
   gitRepoPath: "",
   gitBranch: "main",
+  githubToken: "",
   autoCommitOnPublish: false,
   includePattern: "*.md",
   folderSpaceMappings: {},
@@ -157,10 +159,14 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
   private async publishAndCommit() {
     await this.publishAll();
     try {
-      const didCommit = await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
-      new Notice(didCommit ? "Committed to Git" : "Published — no changes to commit");
+      const token = this.settings.githubToken || undefined;
+      const result = await this.gitBridge.commitAndPush(
+        "Auto-publish via Confluence Git Sync",
+        token
+      );
+      new Notice(result);
     } catch (e: any) {
-      new Notice(`Commit failed: ${e.message}`);
+      new Notice(`Git failed: ${e.message}`);
       console.error(e);
     }
   }
@@ -474,6 +480,20 @@ class ConfluenceGitSyncSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName("GitHub token (for push)")
+      .setDesc("Personal access token with repo scope")
+      .addText((text) => {
+        text
+          .setPlaceholder("ghp_...")
+          .setValue(this.plugin.settings.githubToken)
+          .onChange(async (value) => {
+            this.plugin.settings.githubToken = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.type = "password";
+      });
 
     new Setting(containerEl)
       .setName("Auto-commit on publish")
