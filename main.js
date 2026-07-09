@@ -16682,18 +16682,22 @@ var GitBridge = class {
         if (token) {
           reqHeaders["Authorization"] = `Bearer ${token}`;
         }
+        let collectedBody;
+        if (body) {
+          collectedBody = await asyncIteratorToArrayBuffer(body);
+        }
         const res = await (0, import_obsidian2.requestUrl)({
           url,
           method,
           headers: reqHeaders,
-          body,
+          body: collectedBody,
           throw: false
         });
         return {
           url,
           method,
           headers: res.headers,
-          body: [new Uint8Array(res.arrayBuffer)],
+          body: arrayBufferToAsyncIterator(res.arrayBuffer),
           statusCode: res.status,
           statusMessage: res.status.toString()
         };
@@ -16701,6 +16705,21 @@ var GitBridge = class {
     };
   }
 };
+async function asyncIteratorToArrayBuffer(iterator) {
+  const stream = new ReadableStream({
+    async start(controller) {
+      for await (const chunk of iterator) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
+    }
+  });
+  const response = new Response(stream);
+  return await response.arrayBuffer();
+}
+async function* arrayBufferToAsyncIterator(buffer) {
+  yield new Uint8Array(buffer);
+}
 
 // src/github-actions-gen.ts
 var GithubActionsGen = class {

@@ -161,23 +161,51 @@ export class GitBridge {
           reqHeaders["Authorization"] = `Bearer ${token}`;
         }
 
+        // isomorphic-git sends body as an async iterable — collect it first
+        let collectedBody: ArrayBuffer | undefined;
+        if (body) {
+          collectedBody = await asyncIteratorToArrayBuffer(body);
+        }
+
         const res = await requestUrl({
           url,
           method,
           headers: reqHeaders,
-          body,
+          body: collectedBody,
           throw: false,
         });
 
+        // Return body as async iterable (isomorphic-git expects this)
         return {
           url,
           method,
           headers: res.headers,
-          body: [new Uint8Array(res.arrayBuffer)],
+          body: arrayBufferToAsyncIterator(res.arrayBuffer),
           statusCode: res.status,
           statusMessage: res.status.toString(),
         };
       },
     };
   }
+}
+
+async function asyncIteratorToArrayBuffer(
+  iterator: AsyncIterableIterator<Uint8Array>
+): Promise<ArrayBuffer> {
+  const stream = new ReadableStream({
+    async start(controller) {
+      for await (const chunk of iterator) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
+    },
+  });
+  const response = new Response(stream);
+  return await response.arrayBuffer();
+}
+
+async function* arrayBufferToAsyncIterator(
+  buffer: ArrayBuffer
+): AsyncIterableIterator<Uint8Array> {
+  yield new Uint8Array(buffer);
 }
