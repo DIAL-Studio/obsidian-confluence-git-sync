@@ -15807,13 +15807,12 @@ var GitBridge = class {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
-    await statusMatrix({ fs, dir: this.repoPath }).then(async (status) => {
-      for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-        if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
-          await add({ fs, dir: this.repoPath, filepath });
-        }
+    const status = await statusMatrix({ fs, dir: this.repoPath });
+    for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
+      if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
+        await add({ fs, dir: this.repoPath, filepath });
       }
-    });
+    }
     await commit({
       fs,
       dir: this.repoPath,

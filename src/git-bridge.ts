@@ -24,14 +24,13 @@ export class GitBridge {
       throw new Error("Git repo path not set");
     }
 
-    // Stage all changes
-    await git.statusMatrix({ fs, dir: this.repoPath }).then(async (status) => {
-      for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
-        if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
-          await git.add({ fs, dir: this.repoPath, filepath });
-        }
+    // Stage all changed files
+    const status = await git.statusMatrix({ fs, dir: this.repoPath });
+    for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
+      if (workDirStatus !== headStatus || workDirStatus !== stageStatus) {
+        await git.add({ fs, dir: this.repoPath, filepath });
       }
-    });
+    }
 
     // Commit
     await git.commit({
