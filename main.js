@@ -10542,7 +10542,7 @@ var IdempotentPublisher = class {
    */
   async findPageByTitle(title, spaceKey) {
     var _a;
-    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
+    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}" AND status=current`);
     const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1&expand=version`;
     const response = await this.requestWithAuth(url);
     const data = response.json;

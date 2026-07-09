@@ -82,7 +82,7 @@ export class IdempotentPublisher {
     title: string,
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
-    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
+    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}" AND status=current`);
     const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1&expand=version`;
 
     const response = await this.requestWithAuth(url);
