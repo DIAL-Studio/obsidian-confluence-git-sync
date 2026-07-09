@@ -119,10 +119,7 @@ export class IdempotentPublisher {
         (p: any) =>
           p.id &&
           p.status !== "archived" &&
-          p.status !== "trashed" &&
-          // Validate title matches — CQL on our instance sometimes returns
-          // pages with wrong titles (e.g. archived pages from other spaces)
-          p.title === title
+          p.status !== "trashed"
       );
 
       if (currentPages.length === 0) {
@@ -276,8 +273,7 @@ export class IdempotentPublisher {
           (p: any) =>
             p.id &&
             p.status !== "archived" &&
-            p.status !== "trashed" &&
-            p.title === title
+            p.status !== "trashed"
         );
         if (page) {
           return {
