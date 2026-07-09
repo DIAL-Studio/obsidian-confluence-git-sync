@@ -8,8 +8,6 @@
 // @ts-ignore - isomorphic-git types are incomplete
 import * as git from "isomorphic-git";
 import * as fs from "fs";
-import http from "http";
-import https from "https";
 
 export class GitBridge {
   private repoPath: string;
@@ -19,9 +17,9 @@ export class GitBridge {
   }
 
   /**
-   * Commit all changes and push to remote.
+   * Commit all changes locally. Push is left to the user.
    */
-  async commitAndPush(message: string): Promise<void> {
+  async commit(message: string): Promise<void> {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
@@ -45,19 +43,6 @@ export class GitBridge {
         email: "confluence-git-sync@dial.studio",
       },
     });
-
-    // Push
-    const isHttps = this.repoPath.startsWith("https");
-    await git.push({
-      fs,
-      http: isHttps ? https : http,
-      dir: this.repoPath,
-      remote: "origin",
-      onAuth: () => {
-        // For private repos, the user should have their SSH key or credential helper configured
-        return { username: "", password: "" };
-      },
-    } as any);
   }
 
   /**

@@ -90,9 +90,9 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       callback: () => this.generateGithubAction(),
     });
 
-    // Ribbon icon for quick access to publish current note
-    this.addRibbonIcon("upload-cloud", "Publish current note to Confluence", () => {
-      this.publishCurrentNote();
+    // Ribbon icon for quick access to publish and commit
+    this.addRibbonIcon("upload-cloud", "Publish and commit to Confluence + Git", () => {
+      this.publishAndCommit();
     });
 
     this.addCommand({
@@ -156,9 +156,12 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
 
   private async publishAndCommit() {
     await this.publishAll();
-    if (this.settings.autoCommitOnPublish) {
-      await this.gitBridge.commitAndPush("Auto-publish via Confluence Git Sync");
-      new Notice("Committed and pushed to Git");
+    try {
+      await this.gitBridge.commit("Auto-publish via Confluence Git Sync");
+      new Notice("Committed to Git");
+    } catch (e: any) {
+      new Notice(`Commit failed: ${e.message}`);
+      console.error(e);
     }
   }
 
