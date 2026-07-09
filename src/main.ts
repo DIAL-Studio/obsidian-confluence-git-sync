@@ -57,7 +57,7 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       this.settings.confluenceSpaceKey,
       this.settings.confluenceParentPageId
     );
-    this.gitBridge = new GitBridge(this.settings.gitRepoPath);
+    this.gitBridge = new GitBridge(this.settings.gitRepoPath, this.app.vault);
     this.githubActionsGen = new GithubActionsGen();
 
     this.addCommand({

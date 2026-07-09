@@ -11254,22 +11254,22 @@ function createCache() {
     stats: /* @__PURE__ */ new Map()
   };
 }
-async function updateCachedIndexFile(fs2, filepath, cache) {
+async function updateCachedIndexFile(fs, filepath, cache) {
   const [stat, rawIndexFile] = await Promise.all([
-    fs2.lstat(filepath),
-    fs2.read(filepath)
+    fs.lstat(filepath),
+    fs.read(filepath)
   ]);
   const index = await GitIndex.from(rawIndexFile);
   cache.map.set(filepath, index);
   cache.stats.set(filepath, stat);
 }
-async function isIndexStale(fs2, filepath, cache) {
+async function isIndexStale(fs, filepath, cache) {
   const savedStats = cache.stats.get(filepath);
   if (savedStats === void 0)
     return true;
   if (savedStats === null)
     return false;
-  const currStats = await fs2.lstat(filepath);
+  const currStats = await fs.lstat(filepath);
   if (currStats === null)
     return false;
   return compareStats(savedStats, currStats);
@@ -11287,7 +11287,7 @@ var GitIndexManager = class {
    * @returns {Promise<any>} The result of the closure function.
    * @throws {UnmergedPathsError} If unmerged paths exist and `allowUnmerged` is `false`.
    */
-  static async acquire({ fs: fs2, gitdir, cache, allowUnmerged = true }, closure) {
+  static async acquire({ fs, gitdir, cache, allowUnmerged = true }, closure) {
     if (!cache[IndexCache]) {
       cache[IndexCache] = createCache();
     }
@@ -11298,8 +11298,8 @@ var GitIndexManager = class {
     let unmergedPaths = [];
     await lock.acquire(filepath, async () => {
       const theIndexCache = cache[IndexCache];
-      if (await isIndexStale(fs2, filepath, theIndexCache)) {
-        await updateCachedIndexFile(fs2, filepath, theIndexCache);
+      if (await isIndexStale(fs, filepath, theIndexCache)) {
+        await updateCachedIndexFile(fs, filepath, theIndexCache);
       }
       const index = theIndexCache.map.get(filepath);
       unmergedPaths = index.unmergedPaths;
@@ -11308,8 +11308,8 @@ var GitIndexManager = class {
       result = await closure(index);
       if (index._dirty) {
         const buffer = await index.toObject();
-        await fs2.write(filepath, buffer);
-        theIndexCache.stats.set(filepath, await fs2.lstat(filepath));
+        await fs.write(filepath, buffer);
+        theIndexCache.stats.set(filepath, await fs.lstat(filepath));
         index._dirty = false;
       }
     });
@@ -11388,9 +11388,9 @@ function mode2type(mode) {
   throw new InternalError(`Unexpected GitTree entry mode: ${mode.toString(8)}`);
 }
 var GitWalkerIndex = class {
-  constructor({ fs: fs2, gitdir, cache }) {
+  constructor({ fs, gitdir, cache }) {
     this.treePromise = GitIndexManager.acquire(
-      { fs: fs2, gitdir, cache },
+      { fs, gitdir, cache },
       async function(index) {
         return flatFileListToDirectoryStructure(index.entries);
       }
@@ -11483,8 +11483,8 @@ var GitWalkSymbol = Symbol("GitWalkSymbol");
 function STAGE() {
   const o = /* @__PURE__ */ Object.create(null);
   Object.defineProperty(o, GitWalkSymbol, {
-    value: function({ fs: fs2, gitdir, cache }) {
-      return new GitWalkerIndex({ fs: fs2, gitdir, cache });
+    value: function({ fs, gitdir, cache }) {
+      return new GitWalkerIndex({ fs, gitdir, cache });
     }
   });
   Object.freeze(o);
@@ -12026,8 +12026,8 @@ var GitConfigManager = class {
    * @param {string} opts.gitdir - The path to the `.git` directory.
    * @returns {Promise<GitConfig>} A `GitConfig` object representing the parsed configuration.
    */
-  static async get({ fs: fs2, gitdir }) {
-    const text = await fs2.read(`${gitdir}/config`, { encoding: "utf8" });
+  static async get({ fs, gitdir }) {
+    const text = await fs.read(`${gitdir}/config`, { encoding: "utf8" });
     return GitConfig.from(text);
   }
   /**
@@ -12039,8 +12039,8 @@ var GitConfigManager = class {
    * @param {GitConfig} opts.config - The `GitConfig` object to save.
    * @returns {Promise<void>} Resolves when the configuration has been successfully saved.
    */
-  static async save({ fs: fs2, gitdir, config }) {
-    await fs2.write(`${gitdir}/config`, config.toString(), {
+  static async save({ fs, gitdir, config }) {
+    await fs.write(`${gitdir}/config`, config.toString(), {
       encoding: "utf8"
     });
   }
@@ -12077,7 +12077,7 @@ var GitRefManager = class _GitRefManager {
    * @returns {Promise<Object>} - An object containing pruned refs.
    */
   static async updateRemoteRefs({
-    fs: fs2,
+    fs,
     gitdir,
     remote,
     refs,
@@ -12092,7 +12092,7 @@ var GitRefManager = class _GitRefManager {
         throw new InvalidOidError(value);
       }
     }
-    const config = await GitConfigManager.get({ fs: fs2, gitdir });
+    const config = await GitConfigManager.get({ fs, gitdir });
     if (!refspecs) {
       refspecs = await config.getall(`remote.${remote}.fetch`);
       if (refspecs.length === 0) {
@@ -12104,12 +12104,12 @@ var GitRefManager = class _GitRefManager {
     const actualRefsToWrite = /* @__PURE__ */ new Map();
     if (pruneTags) {
       const tags2 = await _GitRefManager.listRefs({
-        fs: fs2,
+        fs,
         gitdir,
         filepath: "refs/tags"
       });
       await _GitRefManager.deleteRefs({
-        fs: fs2,
+        fs,
         gitdir,
         refs: tags2.map((tag) => `refs/tags/${tag}`)
       });
@@ -12117,7 +12117,7 @@ var GitRefManager = class _GitRefManager {
     if (tags) {
       for (const serverRef of refs.keys()) {
         if (serverRef.startsWith("refs/tags") && !serverRef.endsWith("^{}")) {
-          if (!await _GitRefManager.exists({ fs: fs2, gitdir, ref: serverRef })) {
+          if (!await _GitRefManager.exists({ fs, gitdir, ref: serverRef })) {
             const oid = refs.get(serverRef);
             actualRefsToWrite.set(serverRef, oid);
           }
@@ -12141,7 +12141,7 @@ var GitRefManager = class _GitRefManager {
     if (prune) {
       for (const filepath of refspec.localNamespaces()) {
         const refs2 = (await _GitRefManager.listRefs({
-          fs: fs2,
+          fs,
           gitdir,
           filepath
         })).map((file) => `${filepath}/${file}`);
@@ -12152,13 +12152,13 @@ var GitRefManager = class _GitRefManager {
         }
       }
       if (pruned.length > 0) {
-        await _GitRefManager.deleteRefs({ fs: fs2, gitdir, refs: pruned });
+        await _GitRefManager.deleteRefs({ fs, gitdir, refs: pruned });
       }
     }
     for (const [key, value] of actualRefsToWrite) {
       await acquireLock(
         key,
-        async () => fs2.write(join(gitdir, key), `${value.trim()}
+        async () => fs.write(join(gitdir, key), `${value.trim()}
 `, "utf8")
       );
     }
@@ -12175,13 +12175,13 @@ var GitRefManager = class _GitRefManager {
    * @returns {Promise<void>}
    */
   // TODO: make this less crude?
-  static async writeRef({ fs: fs2, gitdir, ref, value }) {
+  static async writeRef({ fs, gitdir, ref, value }) {
     if (!value.match(/[0-9a-f]{40}/)) {
       throw new InvalidOidError(value);
     }
     await acquireLock(
       ref,
-      async () => fs2.write(join(gitdir, ref), `${value.trim()}
+      async () => fs.write(join(gitdir, ref), `${value.trim()}
 `, "utf8")
     );
   }
@@ -12195,10 +12195,10 @@ var GitRefManager = class _GitRefManager {
    * @param {string} args.value - The target ref.
    * @returns {Promise<void>}
    */
-  static async writeSymbolicRef({ fs: fs2, gitdir, ref, value }) {
+  static async writeSymbolicRef({ fs, gitdir, ref, value }) {
     await acquireLock(
       ref,
-      async () => fs2.write(join(gitdir, ref), `ref: ${value.trim()}
+      async () => fs.write(join(gitdir, ref), `ref: ${value.trim()}
 `, "utf8")
     );
   }
@@ -12211,8 +12211,8 @@ var GitRefManager = class _GitRefManager {
    * @param {string} args.ref - The ref to delete.
    * @returns {Promise<void>}
    */
-  static async deleteRef({ fs: fs2, gitdir, ref }) {
-    return _GitRefManager.deleteRefs({ fs: fs2, gitdir, refs: [ref] });
+  static async deleteRef({ fs, gitdir, ref }) {
+    return _GitRefManager.deleteRefs({ fs, gitdir, refs: [ref] });
   }
   /**
    * Deletes multiple refs.
@@ -12223,11 +12223,11 @@ var GitRefManager = class _GitRefManager {
    * @param {string[]} args.refs - The refs to delete.
    * @returns {Promise<void>}
    */
-  static async deleteRefs({ fs: fs2, gitdir, refs }) {
-    await Promise.all(refs.map((ref) => fs2.rm(join(gitdir, ref))));
+  static async deleteRefs({ fs, gitdir, refs }) {
+    await Promise.all(refs.map((ref) => fs.rm(join(gitdir, ref))));
     let text = await acquireLock(
       "packed-refs",
-      async () => fs2.read(`${gitdir}/packed-refs`, { encoding: "utf8" })
+      async () => fs.read(`${gitdir}/packed-refs`, { encoding: "utf8" })
     );
     const packed = GitPackedRefs.from(text);
     const beforeSize = packed.refs.size;
@@ -12240,7 +12240,7 @@ var GitRefManager = class _GitRefManager {
       text = packed.toString();
       await acquireLock(
         "packed-refs",
-        async () => fs2.write(`${gitdir}/packed-refs`, text, { encoding: "utf8" })
+        async () => fs.write(`${gitdir}/packed-refs`, text, { encoding: "utf8" })
       );
     }
   }
@@ -12255,7 +12255,7 @@ var GitRefManager = class _GitRefManager {
    * @returns {Promise<string>} - The resolved object ID.
    */
   static async resolve({
-    fs: fs2,
+    fs,
     gitdir,
     ref,
     depth = void 0,
@@ -12269,17 +12269,17 @@ var GitRefManager = class _GitRefManager {
     }
     if (ref.startsWith("ref: ")) {
       ref = ref.slice("ref: ".length);
-      return _GitRefManager.resolve({ fs: fs2, gitdir, ref, depth, visited });
+      return _GitRefManager.resolve({ fs, gitdir, ref, depth, visited });
     }
     if (ref.length === 40 && /[0-9a-f]{40}/.test(ref)) {
       return ref;
     }
-    const packedMap = await _GitRefManager.packedRefs({ fs: fs2, gitdir });
+    const packedMap = await _GitRefManager.packedRefs({ fs, gitdir });
     const allpaths = refpaths(ref).filter((p) => !GIT_FILES.includes(p));
     for (const ref2 of allpaths) {
       const sha = await acquireLock(
         ref2,
-        async () => await fs2.read(`${gitdir}/${ref2}`, { encoding: "utf8" }) || packedMap.get(ref2)
+        async () => await fs.read(`${gitdir}/${ref2}`, { encoding: "utf8" }) || packedMap.get(ref2)
       );
       if (sha) {
         if (visited.has(ref2)) {
@@ -12289,7 +12289,7 @@ var GitRefManager = class _GitRefManager {
         }
         visited.add(ref2);
         return _GitRefManager.resolve({
-          fs: fs2,
+          fs,
           gitdir,
           ref: sha.trim(),
           depth,
@@ -12308,9 +12308,9 @@ var GitRefManager = class _GitRefManager {
    * @param {string} args.ref - The ref to check.
    * @returns {Promise<boolean>} - True if the ref exists, false otherwise.
    */
-  static async exists({ fs: fs2, gitdir, ref }) {
+  static async exists({ fs, gitdir, ref }) {
     try {
-      await _GitRefManager.expand({ fs: fs2, gitdir, ref });
+      await _GitRefManager.expand({ fs, gitdir, ref });
       return true;
     } catch (err) {
       return false;
@@ -12325,16 +12325,16 @@ var GitRefManager = class _GitRefManager {
    * @param {string} args.ref - The ref to expand.
    * @returns {Promise<string>} - The full ref name.
    */
-  static async expand({ fs: fs2, gitdir, ref }) {
+  static async expand({ fs, gitdir, ref }) {
     if (ref.length === 40 && /[0-9a-f]{40}/.test(ref)) {
       return ref;
     }
-    const packedMap = await _GitRefManager.packedRefs({ fs: fs2, gitdir });
+    const packedMap = await _GitRefManager.packedRefs({ fs, gitdir });
     const allpaths = refpaths(ref);
     for (const ref2 of allpaths) {
       const refExists = await acquireLock(
         ref2,
-        async () => fs2.exists(`${gitdir}/${ref2}`)
+        async () => fs.exists(`${gitdir}/${ref2}`)
       );
       if (refExists)
         return ref2;
@@ -12405,10 +12405,10 @@ var GitRefManager = class _GitRefManager {
    * @param {string} [args.gitdir=join(dir, '.git')] - [required] The [git directory](dir-vs-gitdir.md) path
    * @returns {Promise<Map<string, string>>} - A map of packed refs.
    */
-  static async packedRefs({ fs: fs2, gitdir }) {
+  static async packedRefs({ fs, gitdir }) {
     const text = await acquireLock(
       "packed-refs",
-      async () => fs2.read(`${gitdir}/packed-refs`, { encoding: "utf8" })
+      async () => fs.read(`${gitdir}/packed-refs`, { encoding: "utf8" })
     );
     const packed = GitPackedRefs.from(text);
     return packed.refs;
@@ -12422,11 +12422,11 @@ var GitRefManager = class _GitRefManager {
    * @param {string} args.filepath - The filepath prefix to match.
    * @returns {Promise<string[]>} - A sorted list of refs.
    */
-  static async listRefs({ fs: fs2, gitdir, filepath }) {
-    const packedMap = _GitRefManager.packedRefs({ fs: fs2, gitdir });
+  static async listRefs({ fs, gitdir, filepath }) {
+    const packedMap = _GitRefManager.packedRefs({ fs, gitdir });
     let files = null;
     try {
-      files = await fs2.readdirDeep(`${gitdir}/${filepath}`);
+      files = await fs.readdirDeep(`${gitdir}/${filepath}`);
       files = files.map((x) => x.replace(`${gitdir}/${filepath}/`, ""));
     } catch (err) {
       files = [];
@@ -12451,15 +12451,15 @@ var GitRefManager = class _GitRefManager {
    * @param {string} [args.remote] - The remote to filter branches by.
    * @returns {Promise<string[]>} - A list of branch names.
    */
-  static async listBranches({ fs: fs2, gitdir, remote }) {
+  static async listBranches({ fs, gitdir, remote }) {
     if (remote) {
       return _GitRefManager.listRefs({
-        fs: fs2,
+        fs,
         gitdir,
         filepath: `refs/remotes/${remote}`
       });
     } else {
-      return _GitRefManager.listRefs({ fs: fs2, gitdir, filepath: `refs/heads` });
+      return _GitRefManager.listRefs({ fs, gitdir, filepath: `refs/heads` });
     }
   }
   /**
@@ -12470,9 +12470,9 @@ var GitRefManager = class _GitRefManager {
    * @param {string} [args.gitdir=join(dir, '.git')] - [required] The [git directory](dir-vs-gitdir.md) path
    * @returns {Promise<string[]>} - A list of tag names.
    */
-  static async listTags({ fs: fs2, gitdir }) {
+  static async listTags({ fs, gitdir }) {
     const tags = await _GitRefManager.listRefs({
-      fs: fs2,
+      fs,
       gitdir,
       filepath: `refs/tags`
     });
@@ -12648,9 +12648,9 @@ var GitObject = class {
     };
   }
 };
-async function readObjectLoose({ fs: fs2, gitdir, oid }) {
+async function readObjectLoose({ fs, gitdir, oid }) {
   const source = `objects/${oid.slice(0, 2)}/${oid.slice(2)}`;
-  const file = await fs2.read(`${gitdir}/${source}`);
+  const file = await fs.read(`${gitdir}/${source}`);
   if (!file) {
     return null;
   }
@@ -13262,17 +13262,17 @@ var GitPackIndex = class _GitPackIndex {
 };
 var PackfileCache = Symbol("PackfileCache");
 async function loadPackIndex({
-  fs: fs2,
+  fs,
   filename,
   getExternalRefDelta,
   emitter,
   emitterPrefix
 }) {
-  const idx = await fs2.read(filename);
+  const idx = await fs.read(filename);
   return GitPackIndex.fromIdx({ idx, getExternalRefDelta });
 }
 function readPackIndex({
-  fs: fs2,
+  fs,
   cache,
   filename,
   getExternalRefDelta,
@@ -13284,7 +13284,7 @@ function readPackIndex({
   let p = cache[PackfileCache].get(filename);
   if (!p) {
     p = loadPackIndex({
-      fs: fs2,
+      fs,
       filename,
       getExternalRefDelta,
       emitter,
@@ -13298,19 +13298,19 @@ async function shasumRange(buffer, { start = 0, end = buffer.length } = {}) {
   return shasum(buffer.subarray(start, end));
 }
 async function readObjectPacked({
-  fs: fs2,
+  fs,
   cache,
   gitdir,
   oid,
   format = "content",
   getExternalRefDelta
 }) {
-  let list = await fs2.readdir(join(gitdir, "objects/pack"));
+  let list = await fs.readdir(join(gitdir, "objects/pack"));
   list = list.filter((x) => x.endsWith(".idx"));
   for (const filename of list) {
     const indexFile = `${gitdir}/objects/pack/${filename}`;
     const p = await readPackIndex({
-      fs: fs2,
+      fs,
       cache,
       filename: indexFile,
       getExternalRefDelta
@@ -13320,7 +13320,7 @@ async function readObjectPacked({
     if (p.offsets.has(oid)) {
       const packFile = indexFile.replace(/idx$/, "pack");
       if (!p.pack) {
-        p.pack = fs2.read(packFile);
+        p.pack = fs.read(packFile);
       }
       const pack = await p.pack;
       if (!pack) {
@@ -13358,23 +13358,23 @@ async function readObjectPacked({
   return null;
 }
 async function _readObject({
-  fs: fs2,
+  fs,
   cache,
   gitdir,
   oid,
   format = "content"
 }) {
-  const getExternalRefDelta = (oid2) => _readObject({ fs: fs2, cache, gitdir, oid: oid2 });
+  const getExternalRefDelta = (oid2) => _readObject({ fs, cache, gitdir, oid: oid2 });
   let result;
   if (oid === "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
     result = { format: "wrapped", object: Buffer.from(`tree 0\0`) };
   }
   if (!result) {
-    result = await readObjectLoose({ fs: fs2, gitdir, oid });
+    result = await readObjectLoose({ fs, gitdir, oid });
   }
   if (!result) {
     result = await readObjectPacked({
-      fs: fs2,
+      fs,
       cache,
       gitdir,
       oid,
@@ -14052,18 +14052,18 @@ var GitCommit = class _GitCommit {
     return _GitCommit.from(signedCommit);
   }
 };
-async function resolveTree({ fs: fs2, cache, gitdir, oid }) {
+async function resolveTree({ fs, cache, gitdir, oid }) {
   if (oid === "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
     return { tree: GitTree.from([]), oid };
   }
-  const { type: type2, object } = await _readObject({ fs: fs2, cache, gitdir, oid });
+  const { type: type2, object } = await _readObject({ fs, cache, gitdir, oid });
   if (type2 === "tag") {
     oid = GitAnnotatedTag.from(object).parse().object;
-    return resolveTree({ fs: fs2, cache, gitdir, oid });
+    return resolveTree({ fs, cache, gitdir, oid });
   }
   if (type2 === "commit") {
     oid = GitCommit.from(object).parse().tree;
-    return resolveTree({ fs: fs2, cache, gitdir, oid });
+    return resolveTree({ fs, cache, gitdir, oid });
   }
   if (type2 !== "tree") {
     throw new ObjectTypeError(oid, type2, "tree");
@@ -14071,21 +14071,21 @@ async function resolveTree({ fs: fs2, cache, gitdir, oid }) {
   return { tree: GitTree.from(object), oid };
 }
 var GitWalkerRepo = class {
-  constructor({ fs: fs2, gitdir, ref, cache }) {
-    this.fs = fs2;
+  constructor({ fs, gitdir, ref, cache }) {
+    this.fs = fs;
     this.cache = cache;
     this.gitdir = gitdir;
     this.mapPromise = (async () => {
       const map2 = /* @__PURE__ */ new Map();
       let oid;
       try {
-        oid = await GitRefManager.resolve({ fs: fs2, gitdir, ref });
+        oid = await GitRefManager.resolve({ fs, gitdir, ref });
       } catch (e) {
         if (e instanceof NotFoundError) {
           oid = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
         }
       }
-      const tree = await resolveTree({ fs: fs2, cache: this.cache, gitdir, oid });
+      const tree = await resolveTree({ fs, cache: this.cache, gitdir, oid });
       tree.type = "tree";
       tree.mode = "40000";
       map2.set(".", tree);
@@ -14120,7 +14120,7 @@ var GitWalkerRepo = class {
   }
   async readdir(entry) {
     const filepath = entry._fullpath;
-    const { fs: fs2, cache, gitdir } = this;
+    const { fs, cache, gitdir } = this;
     const map2 = await this.mapPromise;
     const obj = map2.get(filepath);
     if (!obj)
@@ -14131,7 +14131,7 @@ var GitWalkerRepo = class {
     if (obj.type !== "tree") {
       return null;
     }
-    const { type: type2, object } = await _readObject({ fs: fs2, cache, gitdir, oid });
+    const { type: type2, object } = await _readObject({ fs, cache, gitdir, oid });
     if (type2 !== obj.type) {
       throw new ObjectTypeError(oid, type2, obj.type);
     }
@@ -14162,10 +14162,10 @@ var GitWalkerRepo = class {
   async content(entry) {
     if (entry._content === false) {
       const map2 = await this.mapPromise;
-      const { fs: fs2, cache, gitdir } = this;
+      const { fs, cache, gitdir } = this;
       const obj = map2.get(entry._fullpath);
       const oid = obj.oid;
-      const { type: type2, object } = await _readObject({ fs: fs2, cache, gitdir, oid });
+      const { type: type2, object } = await _readObject({ fs, cache, gitdir, oid });
       if (type2 !== "blob") {
         entry._content = void 0;
       } else {
@@ -14186,16 +14186,16 @@ var GitWalkerRepo = class {
 function TREE({ ref = "HEAD" } = {}) {
   const o = /* @__PURE__ */ Object.create(null);
   Object.defineProperty(o, GitWalkSymbol, {
-    value: function({ fs: fs2, gitdir, cache }) {
-      return new GitWalkerRepo({ fs: fs2, gitdir, ref, cache });
+    value: function({ fs, gitdir, cache }) {
+      return new GitWalkerRepo({ fs, gitdir, ref, cache });
     }
   });
   Object.freeze(o);
   return o;
 }
 var GitWalkerFs = class {
-  constructor({ fs: fs2, dir, gitdir, cache, refresh = true }) {
-    this.fs = fs2;
+  constructor({ fs, dir, gitdir, cache, refresh = true }) {
+    this.fs = fs;
     this.cache = cache;
     this.dir = dir;
     this.gitdir = gitdir;
@@ -14230,8 +14230,8 @@ var GitWalkerFs = class {
   }
   async readdir(entry) {
     const filepath = entry._fullpath;
-    const { fs: fs2, dir } = this;
-    const names = await fs2.readdir(join(dir, filepath));
+    const { fs, dir } = this;
+    const names = await fs.readdir(join(dir, filepath));
     if (names === null)
       return null;
     return names.map((name) => join(filepath, name));
@@ -14250,8 +14250,8 @@ var GitWalkerFs = class {
   }
   async stat(entry) {
     if (entry._stat === false) {
-      const { fs: fs2, dir } = this;
-      let stat = await fs2.lstat(`${dir}/${entry._fullpath}`);
+      const { fs, dir } = this;
+      let stat = await fs.lstat(`${dir}/${entry._fullpath}`);
       if (!stat) {
         throw new Error(
           `ENOENT: no such file or directory, lstat '${entry._fullpath}'`
@@ -14273,17 +14273,17 @@ var GitWalkerFs = class {
   }
   async content(entry) {
     if (entry._content === false) {
-      const { fs: fs2, dir, gitdir } = this;
+      const { fs, dir, gitdir } = this;
       if (await entry.type() === "tree") {
         entry._content = void 0;
       } else {
         let content;
         if (await entry.mode() >> 12 === 10) {
-          content = await fs2.readlink(`${dir}/${entry._fullpath}`);
+          content = await fs.readlink(`${dir}/${entry._fullpath}`);
         } else {
-          const config = await this._getGitConfig(fs2, gitdir);
+          const config = await this._getGitConfig(fs, gitdir);
           const autocrlf = await config.get("core.autocrlf");
-          content = await fs2.read(`${dir}/${entry._fullpath}`, { autocrlf });
+          content = await fs.read(`${dir}/${entry._fullpath}`, { autocrlf });
         }
         entry._actualSize = content.length;
         if (entry._stat && entry._stat.size === -1) {
@@ -14297,14 +14297,14 @@ var GitWalkerFs = class {
   async oid(entry) {
     if (entry._oid === false) {
       const self = this;
-      const { fs: fs2, gitdir, cache } = this;
+      const { fs, gitdir, cache } = this;
       let oid;
       await GitIndexManager.acquire(
-        { fs: fs2, gitdir, cache },
+        { fs, gitdir, cache },
         async function(index) {
           const stage = index.entriesMap.get(entry._fullpath);
           const stats = await entry.stat();
-          const config = await self._getGitConfig(fs2, gitdir);
+          const config = await self._getGitConfig(fs, gitdir);
           const filemode = await config.get("core.filemode");
           const trustino = typeof process !== "undefined" ? !(process.platform === "win32") : true;
           if (!stage || compareStats(stats, stage, filemode, trustino)) {
@@ -14332,19 +14332,19 @@ var GitWalkerFs = class {
     }
     return entry._oid;
   }
-  async _getGitConfig(fs2, gitdir) {
+  async _getGitConfig(fs, gitdir) {
     if (this.config) {
       return this.config;
     }
-    this.config = await GitConfigManager.get({ fs: fs2, gitdir });
+    this.config = await GitConfigManager.get({ fs, gitdir });
     return this.config;
   }
 };
 function WORKDIR({ refresh = true } = {}) {
   const o = /* @__PURE__ */ Object.create(null);
   Object.defineProperty(o, GitWalkSymbol, {
-    value: function({ fs: fs2, dir, gitdir, cache }) {
-      return new GitWalkerFs({ fs: fs2, dir, gitdir, cache, refresh });
+    value: function({ fs, dir, gitdir, cache }) {
+      return new GitWalkerFs({ fs, dir, gitdir, cache, refresh });
     }
   });
   Object.freeze(o);
@@ -14406,7 +14406,7 @@ function* unionOfIterators(sets) {
   }
 }
 async function _walk({
-  fs: fs2,
+  fs,
   cache,
   dir,
   gitdir,
@@ -14424,7 +14424,7 @@ async function _walk({
   iterate = (walk, children) => Promise.all([...children].map(walk))
 }) {
   const walkers = trees.map(
-    (proxy) => proxy[GitWalkSymbol]({ fs: fs2, dir, gitdir, cache })
+    (proxy) => proxy[GitWalkSymbol]({ fs, dir, gitdir, cache })
   );
   const root = new Array(walkers.length).fill(".");
   const range = arrayRange(0, walkers.length);
@@ -14459,23 +14459,23 @@ async function _walk({
   };
   return walk(root);
 }
-async function rmRecursive(fs2, filepath) {
-  const entries = await fs2.readdir(filepath);
+async function rmRecursive(fs, filepath) {
+  const entries = await fs.readdir(filepath);
   if (entries == null) {
-    await fs2.rm(filepath);
+    await fs.rm(filepath);
   } else if (entries.length) {
     await Promise.all(
       entries.map((entry) => {
         const subpath = join(filepath, entry);
-        return fs2.lstat(subpath).then((stat) => {
+        return fs.lstat(subpath).then((stat) => {
           if (!stat)
             return;
-          return stat.isDirectory() ? rmRecursive(fs2, subpath) : fs2.rm(subpath);
+          return stat.isDirectory() ? rmRecursive(fs, subpath) : fs.rm(subpath);
         });
       })
-    ).then(() => fs2.rmdir(filepath));
+    ).then(() => fs.rmdir(filepath));
   } else {
-    await fs2.rmdir(filepath);
+    await fs.rmdir(filepath);
   }
 }
 function isPromiseLike(obj) {
@@ -14487,7 +14487,7 @@ function isObject(obj) {
 function isFunction(obj) {
   return typeof obj === "function";
 }
-function isPromiseFs(fs2) {
+function isPromiseFs(fs) {
   const test = (targetFs) => {
     try {
       return targetFs.readFile().catch((e) => e);
@@ -14495,7 +14495,7 @@ function isPromiseFs(fs2) {
       return e;
     }
   };
-  return isPromiseLike(test(fs2));
+  return isPromiseLike(test(fs));
 }
 var commands = [
   "readFile",
@@ -14509,32 +14509,32 @@ var commands = [
   "readlink",
   "symlink"
 ];
-function bindFs(target, fs2) {
-  if (isPromiseFs(fs2)) {
+function bindFs(target, fs) {
+  if (isPromiseFs(fs)) {
     for (const command of commands) {
-      target[`_${command}`] = fs2[command].bind(fs2);
+      target[`_${command}`] = fs[command].bind(fs);
     }
   } else {
     for (const command of commands) {
-      target[`_${command}`] = (0, import_pify.default)(fs2[command].bind(fs2));
+      target[`_${command}`] = (0, import_pify.default)(fs[command].bind(fs));
     }
   }
-  if (isPromiseFs(fs2)) {
-    if (fs2.cp)
-      target._cp = fs2.cp.bind(fs2);
-    if (fs2.rm)
-      target._rm = fs2.rm.bind(fs2);
-    else if (fs2.rmdir.length > 1)
-      target._rm = fs2.rmdir.bind(fs2);
+  if (isPromiseFs(fs)) {
+    if (fs.cp)
+      target._cp = fs.cp.bind(fs);
+    if (fs.rm)
+      target._rm = fs.rm.bind(fs);
+    else if (fs.rmdir.length > 1)
+      target._rm = fs.rmdir.bind(fs);
     else
       target._rm = rmRecursive.bind(null, target);
   } else {
-    if (fs2.cp)
-      target._cp = (0, import_pify.default)(fs2.cp.bind(fs2));
-    if (fs2.rm)
-      target._rm = (0, import_pify.default)(fs2.rm.bind(fs2));
-    else if (fs2.rmdir.length > 2)
-      target._rm = (0, import_pify.default)(fs2.rmdir.bind(fs2));
+    if (fs.cp)
+      target._cp = (0, import_pify.default)(fs.cp.bind(fs));
+    if (fs.rm)
+      target._rm = (0, import_pify.default)(fs.rm.bind(fs));
+    else if (fs.rmdir.length > 2)
+      target._rm = (0, import_pify.default)(fs.rmdir.bind(fs));
     else
       target._rm = rmRecursive.bind(null, target);
   }
@@ -14545,16 +14545,16 @@ var FileSystem = class {
    *
    * @param {Object} fs - A file system implementation to wrap.
    */
-  constructor(fs2) {
-    if (typeof fs2._original_unwrapped_fs !== "undefined")
-      return fs2;
-    const promises = Object.getOwnPropertyDescriptor(fs2, "promises");
+  constructor(fs) {
+    if (typeof fs._original_unwrapped_fs !== "undefined")
+      return fs;
+    const promises = Object.getOwnPropertyDescriptor(fs, "promises");
     if (promises && promises.enumerable) {
-      bindFs(this, fs2.promises);
+      bindFs(this, fs.promises);
     } else {
-      bindFs(this, fs2);
+      bindFs(this, fs);
     }
-    this._original_unwrapped_fs = fs2;
+    this._original_unwrapped_fs = fs;
   }
   /**
    * Return true if a file exists, false if it doesn't exist.
@@ -14799,15 +14799,15 @@ var GitIgnoreManager = class {
    * @param {string} args.filepath - The path of the file to check.
    * @returns {Promise<boolean>} - `true` if the file is ignored, `false` otherwise.
    */
-  static async isIgnored({ fs: fs2, dir, gitdir = join(dir, ".git"), filepath }) {
+  static async isIgnored({ fs, dir, gitdir = join(dir, ".git"), filepath }) {
     if (basename(filepath) === ".git")
       return true;
     if (filepath === ".")
       return false;
     let excludes = "";
     const excludesFile = join(gitdir, "info", "exclude");
-    if (await fs2.exists(excludesFile)) {
-      excludes = await fs2.read(excludesFile, "utf8");
+    if (await fs.exists(excludesFile)) {
+      excludes = await fs.read(excludesFile, "utf8");
     }
     const pairs2 = [
       {
@@ -14828,7 +14828,7 @@ var GitIgnoreManager = class {
     for (const p of pairs2) {
       let file;
       try {
-        file = await fs2.read(p.gitignore, "utf8");
+        file = await fs.read(p.gitignore, "utf8");
       } catch (err) {
         if (err.code === "NOENT")
           continue;
@@ -14847,7 +14847,7 @@ var GitIgnoreManager = class {
     return ignoredStatus;
   }
 };
-async function writeObjectLoose({ fs: fs2, gitdir, object, format, oid }) {
+async function writeObjectLoose({ fs, gitdir, object, format, oid }) {
   if (format !== "deflated") {
     throw new InternalError(
       "GitObjectStoreLoose expects objects to write to be in deflated format"
@@ -14855,8 +14855,8 @@ async function writeObjectLoose({ fs: fs2, gitdir, object, format, oid }) {
   }
   const source = `objects/${oid.slice(0, 2)}/${oid.slice(2)}`;
   const filepath = `${gitdir}/${source}`;
-  if (!await fs2.exists(filepath))
-    await fs2.write(filepath, object);
+  if (!await fs.exists(filepath))
+    await fs.write(filepath, object);
 }
 var supportsCompressionStream = null;
 async function deflate(buffer) {
@@ -14882,7 +14882,7 @@ function testCompressionStream() {
   }
 }
 async function _writeObject({
-  fs: fs2,
+  fs,
   gitdir,
   type: type2,
   object,
@@ -14898,7 +14898,7 @@ async function _writeObject({
     object = Buffer.from(await deflate(object));
   }
   if (!dryRun) {
-    await writeObjectLoose({ fs: fs2, gitdir, object, format: "deflated", oid });
+    await writeObjectLoose({ fs, gitdir, object, format: "deflated", oid });
   }
   return oid;
 }
@@ -14922,17 +14922,17 @@ async function add({
     assertParameter("dir", dir);
     assertParameter("gitdir", gitdir);
     assertParameter("filepath", filepath);
-    const fs2 = new FileSystem(_fs);
-    const updatedGitdir = await discoverGitdir({ fsp: fs2, dotgit: gitdir });
+    const fs = new FileSystem(_fs);
+    const updatedGitdir = await discoverGitdir({ fsp: fs, dotgit: gitdir });
     await GitIndexManager.acquire(
-      { fs: fs2, gitdir: updatedGitdir, cache },
+      { fs, gitdir: updatedGitdir, cache },
       async (index) => {
-        const config = await GitConfigManager.get({ fs: fs2, gitdir: updatedGitdir });
+        const config = await GitConfigManager.get({ fs, gitdir: updatedGitdir });
         const autocrlf = await config.get("core.autocrlf");
         return addToIndex({
           dir,
           gitdir: updatedGitdir,
-          fs: fs2,
+          fs,
           filepath,
           index,
           force,
@@ -14949,7 +14949,7 @@ async function add({
 async function addToIndex({
   dir,
   gitdir,
-  fs: fs2,
+  fs,
   filepath,
   index,
   force,
@@ -14960,7 +14960,7 @@ async function addToIndex({
   const promises = filepath.map(async (currentFilepath) => {
     if (!force) {
       const ignored = await GitIgnoreManager.isIgnored({
-        fs: fs2,
+        fs,
         dir,
         gitdir,
         filepath: currentFilepath
@@ -14968,17 +14968,17 @@ async function addToIndex({
       if (ignored)
         return;
     }
-    const stats = await fs2.lstat(join(dir, currentFilepath));
+    const stats = await fs.lstat(join(dir, currentFilepath));
     if (!stats)
       throw new NotFoundError(currentFilepath);
     if (stats.isDirectory()) {
-      const children = await fs2.readdir(join(dir, currentFilepath));
+      const children = await fs.readdir(join(dir, currentFilepath));
       if (parallel) {
         const promises2 = children.map(
           (child) => addToIndex({
             dir,
             gitdir,
-            fs: fs2,
+            fs,
             filepath: [join(currentFilepath, child)],
             index,
             force,
@@ -14992,7 +14992,7 @@ async function addToIndex({
           await addToIndex({
             dir,
             gitdir,
-            fs: fs2,
+            fs,
             filepath: [join(currentFilepath, child)],
             index,
             force,
@@ -15002,10 +15002,10 @@ async function addToIndex({
         }
       }
     } else {
-      const object = stats.isSymbolicLink() ? await fs2.readlink(join(dir, currentFilepath)).then(posixifyPathBuffer) : await fs2.read(join(dir, currentFilepath), { autocrlf });
+      const object = stats.isSymbolicLink() ? await fs.readlink(join(dir, currentFilepath)).then(posixifyPathBuffer) : await fs.read(join(dir, currentFilepath), { autocrlf });
       if (object === null)
         throw new NotFoundError(currentFilepath);
-      const oid = await _writeObject({ fs: fs2, gitdir, type: "blob", object });
+      const oid = await _writeObject({ fs, gitdir, type: "blob", object });
       index.insert({ filepath: currentFilepath, stats, oid });
     }
   });
@@ -15020,8 +15020,8 @@ async function addToIndex({
   const fulfilledPromises = settledPromises.filter((settle) => settle.status === "fulfilled" && settle.value).map((settle) => settle.value);
   return fulfilledPromises;
 }
-async function _getConfig({ fs: fs2, gitdir, path }) {
-  const config = await GitConfigManager.get({ fs: fs2, gitdir });
+async function _getConfig({ fs, gitdir, path }) {
+  const config = await GitConfigManager.get({ fs, gitdir });
   return config.get(path);
 }
 function assignDefined(target, ...sources) {
@@ -15037,11 +15037,11 @@ function assignDefined(target, ...sources) {
   }
   return target;
 }
-async function normalizeAuthorObject({ fs: fs2, gitdir, author, commit: commit2 }) {
+async function normalizeAuthorObject({ fs, gitdir, author, commit: commit2 }) {
   const timestamp2 = Math.floor(Date.now() / 1e3);
   const defaultAuthor = {
-    name: await _getConfig({ fs: fs2, gitdir, path: "user.name" }),
-    email: await _getConfig({ fs: fs2, gitdir, path: "user.email" }) || "",
+    name: await _getConfig({ fs, gitdir, path: "user.name" }),
+    email: await _getConfig({ fs, gitdir, path: "user.email" }) || "",
     // author.email is allowed to be empty string
     timestamp: timestamp2,
     timezoneOffset: new Date(timestamp2 * 1e3).getTimezoneOffset()
@@ -15058,7 +15058,7 @@ async function normalizeAuthorObject({ fs: fs2, gitdir, author, commit: commit2 
   return normalizedAuthor;
 }
 async function normalizeCommitterObject({
-  fs: fs2,
+  fs,
   gitdir,
   author,
   committer,
@@ -15066,8 +15066,8 @@ async function normalizeCommitterObject({
 }) {
   const timestamp2 = Math.floor(Date.now() / 1e3);
   const defaultCommitter = {
-    name: await _getConfig({ fs: fs2, gitdir, path: "user.name" }),
-    email: await _getConfig({ fs: fs2, gitdir, path: "user.email" }) || "",
+    name: await _getConfig({ fs, gitdir, path: "user.name" }),
+    email: await _getConfig({ fs, gitdir, path: "user.email" }) || "",
     // committer.email is allowed to be empty string
     timestamp: timestamp2,
     timezoneOffset: new Date(timestamp2 * 1e3).getTimezoneOffset()
@@ -15084,20 +15084,20 @@ async function normalizeCommitterObject({
   }
   return normalizedCommitter;
 }
-async function resolveCommit({ fs: fs2, cache, gitdir, oid }) {
-  const { type: type2, object } = await _readObject({ fs: fs2, cache, gitdir, oid });
+async function resolveCommit({ fs, cache, gitdir, oid }) {
+  const { type: type2, object } = await _readObject({ fs, cache, gitdir, oid });
   if (type2 === "tag") {
     oid = GitAnnotatedTag.from(object).parse().object;
-    return resolveCommit({ fs: fs2, cache, gitdir, oid });
+    return resolveCommit({ fs, cache, gitdir, oid });
   }
   if (type2 !== "commit") {
     throw new ObjectTypeError(oid, type2, "commit");
   }
   return { commit: GitCommit.from(object), oid };
 }
-async function _readCommit({ fs: fs2, cache, gitdir, oid }) {
+async function _readCommit({ fs, cache, gitdir, oid }) {
   const { commit: commit2, oid: commitOid } = await resolveCommit({
-    fs: fs2,
+    fs,
     cache,
     gitdir,
     oid
@@ -15110,7 +15110,7 @@ async function _readCommit({ fs: fs2, cache, gitdir, oid }) {
   return result;
 }
 async function _commit({
-  fs: fs2,
+  fs,
   cache,
   onSign,
   gitdir,
@@ -15128,10 +15128,10 @@ async function _commit({
   let initialCommit = false;
   let detachedHead = false;
   if (!ref) {
-    const headContent = await fs2.read(`${gitdir}/HEAD`, { encoding: "utf8" });
+    const headContent = await fs.read(`${gitdir}/HEAD`, { encoding: "utf8" });
     detachedHead = !headContent.startsWith("ref:");
     ref = await GitRefManager.resolve({
-      fs: fs2,
+      fs,
       gitdir,
       ref: "HEAD",
       depth: 2
@@ -15140,19 +15140,19 @@ async function _commit({
   let refOid, refCommit;
   try {
     refOid = await GitRefManager.resolve({
-      fs: fs2,
+      fs,
       gitdir,
       ref
     });
-    refCommit = await _readCommit({ fs: fs2, gitdir, oid: refOid, cache: {} });
+    refCommit = await _readCommit({ fs, gitdir, oid: refOid, cache: {} });
   } catch (e) {
     initialCommit = true;
   }
   if (amend && initialCommit) {
     throw new NoCommitError(ref);
   }
-  const author = !amend ? await normalizeAuthorObject({ fs: fs2, gitdir, author: _author }) : await normalizeAuthorObject({
-    fs: fs2,
+  const author = !amend ? await normalizeAuthorObject({ fs, gitdir, author: _author }) : await normalizeAuthorObject({
+    fs,
     gitdir,
     author: _author,
     commit: refCommit.commit
@@ -15160,12 +15160,12 @@ async function _commit({
   if (!author)
     throw new MissingNameError("author");
   const committer = !amend ? await normalizeCommitterObject({
-    fs: fs2,
+    fs,
     gitdir,
     author,
     committer: _committer
   }) : await normalizeCommitterObject({
-    fs: fs2,
+    fs,
     gitdir,
     author,
     committer: _committer,
@@ -15174,12 +15174,12 @@ async function _commit({
   if (!committer)
     throw new MissingNameError("committer");
   return GitIndexManager.acquire(
-    { fs: fs2, gitdir, cache, allowUnmerged: false },
+    { fs, gitdir, cache, allowUnmerged: false },
     async function(index) {
       const inodes = flatFileListToDirectoryStructure(index.entries);
       const inode = inodes.get(".");
       if (!tree) {
-        tree = await constructTree({ fs: fs2, gitdir, inode, dryRun });
+        tree = await constructTree({ fs, gitdir, inode, dryRun });
       }
       if (!parent) {
         if (!amend) {
@@ -15190,7 +15190,7 @@ async function _commit({
       } else {
         parent = await Promise.all(
           parent.map((p) => {
-            return GitRefManager.resolve({ fs: fs2, gitdir, ref: p });
+            return GitRefManager.resolve({ fs, gitdir, ref: p });
           })
         );
       }
@@ -15212,7 +15212,7 @@ async function _commit({
         comm = await GitCommit.sign(comm, onSign, signingKey);
       }
       const oid = await _writeObject({
-        fs: fs2,
+        fs,
         gitdir,
         type: "commit",
         object: comm.toObject(),
@@ -15220,7 +15220,7 @@ async function _commit({
       });
       if (!noUpdateBranch && !dryRun) {
         await GitRefManager.writeRef({
-          fs: fs2,
+          fs,
           gitdir,
           ref: detachedHead ? "HEAD" : ref,
           value: oid
@@ -15230,12 +15230,12 @@ async function _commit({
     }
   );
 }
-async function constructTree({ fs: fs2, gitdir, inode, dryRun }) {
+async function constructTree({ fs, gitdir, inode, dryRun }) {
   const children = inode.children;
   for (const inode2 of children) {
     if (inode2.type === "tree") {
       inode2.metadata.mode = "040000";
-      inode2.metadata.oid = await constructTree({ fs: fs2, gitdir, inode: inode2, dryRun });
+      inode2.metadata.oid = await constructTree({ fs, gitdir, inode: inode2, dryRun });
     }
   }
   const entries = children.map((inode2) => ({
@@ -15246,7 +15246,7 @@ async function constructTree({ fs: fs2, gitdir, inode, dryRun }) {
   }));
   const tree = GitTree.from(entries);
   const oid = await _writeObject({
-    fs: fs2,
+    fs,
     gitdir,
     type: "tree",
     object: tree.toObject(),
@@ -15254,21 +15254,21 @@ async function constructTree({ fs: fs2, gitdir, inode, dryRun }) {
   });
   return oid;
 }
-async function resolveFilepath({ fs: fs2, cache, gitdir, oid, filepath }) {
+async function resolveFilepath({ fs, cache, gitdir, oid, filepath }) {
   if (filepath.startsWith("/")) {
     throw new InvalidFilepathError("leading-slash");
   } else if (filepath.endsWith("/")) {
     throw new InvalidFilepathError("trailing-slash");
   }
   const _oid = oid;
-  const result = await resolveTree({ fs: fs2, cache, gitdir, oid });
+  const result = await resolveTree({ fs, cache, gitdir, oid });
   const tree = result.tree;
   if (filepath === "") {
     oid = result.oid;
   } else {
     const pathArray = filepath.split("/");
     oid = await _resolveFilepath({
-      fs: fs2,
+      fs,
       cache,
       gitdir,
       tree,
@@ -15280,7 +15280,7 @@ async function resolveFilepath({ fs: fs2, cache, gitdir, oid, filepath }) {
   return oid;
 }
 async function _resolveFilepath({
-  fs: fs2,
+  fs,
   cache,
   gitdir,
   tree,
@@ -15295,7 +15295,7 @@ async function _resolveFilepath({
         return entry.oid;
       } else {
         const { type: type2, object } = await _readObject({
-          fs: fs2,
+          fs,
           cache,
           gitdir,
           oid: entry.oid
@@ -15305,7 +15305,7 @@ async function _resolveFilepath({
         }
         tree = GitTree.from(object);
         return _resolveFilepath({
-          fs: fs2,
+          fs,
           cache,
           gitdir,
           tree,
@@ -15341,20 +15341,20 @@ function abbreviateRef(ref) {
   return ref;
 }
 async function _currentBranch({
-  fs: fs2,
+  fs,
   gitdir,
   fullname = false,
   test = false
 }) {
   const ref = await GitRefManager.resolve({
-    fs: fs2,
+    fs,
     gitdir,
     ref: "HEAD",
     depth: 2
   });
   if (test) {
     try {
-      await GitRefManager.resolve({ fs: fs2, gitdir, ref });
+      await GitRefManager.resolve({ fs, gitdir, ref });
     } catch (_) {
       return;
     }
@@ -15373,13 +15373,13 @@ var GitShallowManager = class {
    * @param {string} [args.gitdir] - [required] The [git directory](dir-vs-gitdir.md) path
    * @returns {Promise<Set<string>>} - A set of shallow object IDs.
    */
-  static async read({ fs: fs2, gitdir }) {
+  static async read({ fs, gitdir }) {
     if (lock$3 === null)
       lock$3 = new import_async_lock.default();
     const filepath = join(gitdir, "shallow");
     const oids = /* @__PURE__ */ new Set();
     await lock$3.acquire(filepath, async function() {
-      const text = await fs2.read(filepath, { encoding: "utf8" });
+      const text = await fs.read(filepath, { encoding: "utf8" });
       if (text === null)
         return oids;
       if (text.trim() === "")
@@ -15398,20 +15398,20 @@ var GitShallowManager = class {
    * @param {Set<string>} args.oids - A set of shallow object IDs to write.
    * @returns {Promise<void>}
    */
-  static async write({ fs: fs2, gitdir, oids }) {
+  static async write({ fs, gitdir, oids }) {
     if (lock$3 === null)
       lock$3 = new import_async_lock.default();
     const filepath = join(gitdir, "shallow");
     if (oids.size > 0) {
       const text = [...oids].join("\n") + "\n";
       await lock$3.acquire(filepath, async function() {
-        await fs2.write(filepath, text, {
+        await fs.write(filepath, text, {
           encoding: "utf8"
         });
       });
     } else {
       await lock$3.acquire(filepath, async function() {
-        await fs2.rm(filepath);
+        await fs.rm(filepath);
       });
     }
   }
@@ -15441,10 +15441,10 @@ async function commit({
     if (signingKey) {
       assertParameter("onSign", onSign);
     }
-    const fs2 = new FileSystem(_fs);
-    const updatedGitdir = await discoverGitdir({ fsp: fs2, dotgit: gitdir });
+    const fs = new FileSystem(_fs);
+    const updatedGitdir = await discoverGitdir({ fsp: fs, dotgit: gitdir });
     return await _commit({
-      fs: fs2,
+      fs,
       cache,
       onSign,
       gitdir: updatedGitdir,
@@ -15465,16 +15465,16 @@ async function commit({
   }
 }
 async function currentBranch({
-  fs: fs2,
+  fs,
   dir,
   gitdir = join(dir, ".git"),
   fullname = false,
   test = false
 }) {
   try {
-    assertParameter("fs", fs2);
+    assertParameter("fs", fs);
     assertParameter("gitdir", gitdir);
-    const fsp = new FileSystem(fs2);
+    const fsp = new FileSystem(fs);
     const updatedGitdir = await discoverGitdir({ fsp, dotgit: gitdir });
     return await _currentBranch({
       fs: fsp,
@@ -15491,18 +15491,18 @@ function compareAge(a, b) {
   return a.committer.timestamp - b.committer.timestamp;
 }
 var EMPTY_OID = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
-async function resolveFileIdInTree({ fs: fs2, cache, gitdir, oid, fileId }) {
+async function resolveFileIdInTree({ fs, cache, gitdir, oid, fileId }) {
   if (fileId === EMPTY_OID)
     return;
   const _oid = oid;
   let filepath;
-  const result = await resolveTree({ fs: fs2, cache, gitdir, oid });
+  const result = await resolveTree({ fs, cache, gitdir, oid });
   const tree = result.tree;
   if (fileId === result.oid) {
     filepath = result.path;
   } else {
     filepath = await _resolveFileId({
-      fs: fs2,
+      fs,
       cache,
       gitdir,
       tree,
@@ -15519,7 +15519,7 @@ async function resolveFileIdInTree({ fs: fs2, cache, gitdir, oid, fileId }) {
   return filepath;
 }
 async function _resolveFileId({
-  fs: fs2,
+  fs,
   cache,
   gitdir,
   tree,
@@ -15535,13 +15535,13 @@ async function _resolveFileId({
       filepaths.push(result);
     } else if (entry.type === "tree") {
       result = _readObject({
-        fs: fs2,
+        fs,
         cache,
         gitdir,
         oid: entry.oid
       }).then(function({ object }) {
         return _resolveFileId({
-          fs: fs2,
+          fs,
           cache,
           gitdir,
           tree: GitTree.from(object),
@@ -15558,7 +15558,7 @@ async function _resolveFileId({
   return filepaths;
 }
 async function _log({
-  fs: fs2,
+  fs,
   cache,
   gitdir,
   filepath,
@@ -15570,9 +15570,9 @@ async function _log({
 }) {
   const sinceTimestamp = typeof since === "undefined" ? void 0 : Math.floor(since.valueOf() / 1e3);
   const commits = [];
-  const shallowCommits = await GitShallowManager.read({ fs: fs2, gitdir });
-  const oid = await GitRefManager.resolve({ fs: fs2, gitdir, ref });
-  const tips = [await _readCommit({ fs: fs2, cache, gitdir, oid })];
+  const shallowCommits = await GitShallowManager.read({ fs, gitdir });
+  const oid = await GitRefManager.resolve({ fs, gitdir, ref });
+  const tips = [await _readCommit({ fs, cache, gitdir, oid })];
   let lastFileOid;
   let lastCommit;
   let isOk;
@@ -15589,7 +15589,7 @@ async function _log({
       let vFileOid;
       try {
         vFileOid = await resolveFilepath({
-          fs: fs2,
+          fs,
           cache,
           gitdir,
           oid: commit2.commit.tree,
@@ -15606,7 +15606,7 @@ async function _log({
           let found = follow && lastFileOid;
           if (found) {
             found = await resolveFileIdInTree({
-              fs: fs2,
+              fs,
               cache,
               gitdir,
               oid: commit2.commit.tree,
@@ -15616,7 +15616,7 @@ async function _log({
               if (Array.isArray(found)) {
                 if (lastCommit) {
                   const lastFound = await resolveFileIdInTree({
-                    fs: fs2,
+                    fs,
                     cache,
                     gitdir,
                     oid: lastCommit.commit.tree,
@@ -15667,7 +15667,7 @@ async function _log({
     }
     if (!shallowCommits.has(commit2.oid)) {
       for (const oid2 of commit2.commit.parent) {
-        const commit3 = await _readCommit({ fs: fs2, cache, gitdir, oid: oid2 });
+        const commit3 = await _readCommit({ fs, cache, gitdir, oid: oid2 });
         if (!tips.map((commit4) => commit4.oid).includes(commit3.oid)) {
           tips.push(commit3);
         }
@@ -15681,7 +15681,7 @@ async function _log({
   return commits;
 }
 async function log({
-  fs: fs2,
+  fs,
   dir,
   gitdir = join(dir, ".git"),
   filepath,
@@ -15694,10 +15694,10 @@ async function log({
   cache = {}
 }) {
   try {
-    assertParameter("fs", fs2);
+    assertParameter("fs", fs);
     assertParameter("gitdir", gitdir);
     assertParameter("ref", ref);
-    const fsp = new FileSystem(fs2);
+    const fsp = new FileSystem(fs);
     const updatedGitdir = await discoverGitdir({ fsp, dotgit: gitdir });
     return await _log({
       fs: fsp,
@@ -15730,10 +15730,10 @@ async function statusMatrix({
     assertParameter("fs", _fs);
     assertParameter("gitdir", gitdir);
     assertParameter("ref", ref);
-    const fs2 = new FileSystem(_fs);
-    const updatedGitdir = await discoverGitdir({ fsp: fs2, dotgit: gitdir });
+    const fs = new FileSystem(_fs);
+    const updatedGitdir = await discoverGitdir({ fsp: fs, dotgit: gitdir });
     return await _walk({
-      fs: fs2,
+      fs,
       cache,
       dir,
       gitdir: updatedGitdir,
@@ -15742,7 +15742,7 @@ async function statusMatrix({
         if (!head && !stage && workdir) {
           if (!shouldIgnore) {
             const isIgnored = await GitIgnoreManager.isIgnored({
-              fs: fs2,
+              fs,
               dir,
               filepath
             });
@@ -15794,20 +15794,88 @@ async function statusMatrix({
   }
 }
 
-// src/git-bridge.ts
-var fs = __toESM(require("fs"));
-var GitBridge = class {
-  constructor(repoPath) {
-    this.repoPath = repoPath;
+// src/vault-fs-adapter.ts
+var VaultFsAdapter = class {
+  constructor(vault) {
+    this.adapter = vault.adapter;
   }
-  /**
-   * Commit all changes locally. Push is left to the user.
-   */
+  async readFile(path, opts) {
+    if (opts === "utf8" || (opts == null ? void 0 : opts.encoding) === "utf8") {
+      return this.adapter.read(normalize2(path));
+    }
+    return this.adapter.readBinary(normalize2(path));
+  }
+  async writeFile(path, data) {
+    const normalized = normalize2(path);
+    if (typeof data === "string") {
+      await this.adapter.write(normalized, data);
+    } else {
+      const buf = toArrayBuffer(data);
+      await this.adapter.writeBinary(normalized, buf);
+    }
+  }
+  async readdir(path) {
+    const res = await this.adapter.list(normalize2(path));
+    return [...res.files, ...res.folders];
+  }
+  async mkdir(path) {
+    await this.adapter.mkdir(normalize2(path));
+  }
+  async rmdir(path) {
+    await this.adapter.rmdir(normalize2(path), true);
+  }
+  async stat(path) {
+    var _a, _b, _c;
+    const s = await this.adapter.stat(normalize2(path));
+    if (!s)
+      throw { code: "ENOENT" };
+    return {
+      type: s.type === "folder" ? "directory" : "file",
+      mode: s.type === "folder" ? 493 : 420,
+      size: (_a = s.size) != null ? _a : 0,
+      mtimeMs: (_b = s.mtime) != null ? _b : 0,
+      ctimeMs: (_c = s.ctime) != null ? _c : 0,
+      isFile: () => s.type === "file",
+      isDirectory: () => s.type === "folder",
+      isSymbolicLink: () => false
+    };
+  }
+  async unlink(path) {
+    await this.adapter.remove(normalize2(path));
+  }
+  async lstat(path) {
+    return this.stat(path);
+  }
+  async readlink(_path) {
+    throw new Error("readlink not implemented");
+  }
+  async symlink(_path) {
+    throw new Error("symlink not implemented");
+  }
+};
+function normalize2(filepath) {
+  return filepath === "." ? "/" : filepath.startsWith("/") ? filepath : `/${filepath}`;
+}
+function toArrayBuffer(data) {
+  if (data instanceof ArrayBuffer)
+    return data;
+  if (data.buffer instanceof ArrayBuffer && data.byteOffset === 0 && data.byteLength === data.buffer.byteLength) {
+    return data.buffer;
+  }
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice().buffer;
+}
+
+// src/git-bridge.ts
+var GitBridge = class {
+  constructor(repoPath, vault) {
+    this.repoPath = repoPath;
+    this.fs = new VaultFsAdapter(vault);
+  }
   async commit(message) {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
-    const status = await statusMatrix({ fs, dir: this.repoPath });
+    const status = await statusMatrix({ fs: this.fs, dir: this.repoPath });
     const changes = [];
     const allFiles = [];
     for (const [filepath, headStatus, workDirStatus, stageStatus] of status) {
@@ -15815,7 +15883,7 @@ var GitBridge = class {
       const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
       if (changed) {
         changes.push(`${filepath}`);
-        await add({ fs, dir: this.repoPath, filepath });
+        await add({ fs: this.fs, dir: this.repoPath, filepath });
       }
     }
     console.log("[ConfluenceGitSync] All tracked files:", allFiles);
@@ -15824,7 +15892,7 @@ var GitBridge = class {
       return false;
     }
     await commit({
-      fs,
+      fs: this.fs,
       dir: this.repoPath,
       message,
       author: {
@@ -15834,27 +15902,18 @@ var GitBridge = class {
     });
     return true;
   }
-  /**
-   * Get the current branch name.
-   */
   async getCurrentBranch() {
-    const branch = await currentBranch({ fs, dir: this.repoPath });
+    const branch = await currentBranch({ fs: this.fs, dir: this.repoPath });
     return branch || "main";
   }
-  /**
-   * Get the last commit hash.
-   */
   async getLastCommitHash() {
-    const log2 = await log({ fs, dir: this.repoPath, depth: 1 });
+    const log2 = await log({ fs: this.fs, dir: this.repoPath, depth: 1 });
     if (log2.length === 0)
       throw new Error("No commits found");
     return log2[0].oid;
   }
-  /**
-   * Check if the repo has uncommitted changes.
-   */
   async hasUncommittedChanges() {
-    const status = await statusMatrix({ fs, dir: this.repoPath });
+    const status = await statusMatrix({ fs: this.fs, dir: this.repoPath });
     for (const [, head, workdir, stage] of status) {
       if (workdir !== head || workdir !== stage) {
         return true;
@@ -15948,7 +16007,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       this.settings.confluenceSpaceKey,
       this.settings.confluenceParentPageId
     );
-    this.gitBridge = new GitBridge(this.settings.gitRepoPath);
+    this.gitBridge = new GitBridge(this.settings.gitRepoPath, this.app.vault);
     this.githubActionsGen = new GithubActionsGen();
     this.addCommand({
       id: "publish-current-note",

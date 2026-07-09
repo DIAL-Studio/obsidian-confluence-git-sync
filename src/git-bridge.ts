@@ -1,31 +1,33 @@
 /**
  * Git bridge using isomorphic-git.
  *
- * Provides commit and push functionality from within Obsidian,
+ * Provides commit functionality from within Obsidian,
  * without requiring the user to have git CLI installed.
+ *
+ * Uses VaultFsAdapter instead of Node.js fs because Obsidian's
+ * renderer process sandboxes the fs module.
  */
 
 // @ts-ignore - isomorphic-git types are incomplete
 import * as git from "isomorphic-git";
-import * as fs from "fs";
+import type { Vault } from "obsidian";
+import { VaultFsAdapter } from "./vault-fs-adapter";
 
 export class GitBridge {
   private repoPath: string;
+  private fs: VaultFsAdapter;
 
-  constructor(repoPath: string) {
+  constructor(repoPath: string, vault: Vault) {
     this.repoPath = repoPath;
+    this.fs = new VaultFsAdapter(vault);
   }
 
-  /**
-   * Commit all changes locally. Push is left to the user.
-   */
   async commit(message: string): Promise<boolean> {
     if (!this.repoPath) {
       throw new Error("Git repo path not set");
     }
 
-    // Debug: log the status matrix to understand what's happening
-    const status = await git.statusMatrix({ fs, dir: this.repoPath });
+    const status = await git.statusMatrix({ fs: this.fs, dir: this.repoPath });
     const changes: string[] = [];
     const allFiles: string[] = [];
 
@@ -34,7 +36,7 @@ export class GitBridge {
       const changed = workDirStatus !== headStatus || workDirStatus !== stageStatus;
       if (changed) {
         changes.push(`${filepath}`);
-        await git.add({ fs, dir: this.repoPath, filepath });
+        await git.add({ fs: this.fs, dir: this.repoPath, filepath });
       }
     }
 
@@ -46,7 +48,7 @@ export class GitBridge {
     }
 
     await git.commit({
-      fs,
+      fs: this.fs,
       dir: this.repoPath,
       message,
       author: {
@@ -57,28 +59,19 @@ export class GitBridge {
     return true;
   }
 
-  /**
-   * Get the current branch name.
-   */
   async getCurrentBranch(): Promise<string> {
-    const branch = await git.currentBranch({ fs, dir: this.repoPath });
+    const branch = await git.currentBranch({ fs: this.fs, dir: this.repoPath });
     return branch || "main";
   }
 
-  /**
-   * Get the last commit hash.
-   */
   async getLastCommitHash(): Promise<string> {
-    const log = await git.log({ fs, dir: this.repoPath, depth: 1 });
+    const log = await git.log({ fs: this.fs, dir: this.repoPath, depth: 1 });
     if (log.length === 0) throw new Error("No commits found");
     return log[0].oid;
   }
 
-  /**
-   * Check if the repo has uncommitted changes.
-   */
   async hasUncommittedChanges(): Promise<boolean> {
-    const status = await git.statusMatrix({ fs, dir: this.repoPath });
+    const status = await git.statusMatrix({ fs: this.fs, dir: this.repoPath });
     for (const [, head, workdir, stage] of status) {
       if (workdir !== head || workdir !== stage) {
         return true;
