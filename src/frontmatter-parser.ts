@@ -23,6 +23,8 @@ export interface FrontmatterData {
   aliases?: string[];
   created?: string;
   updated?: string  | string[];
+  "confluence-page-id"?: string;
+  "confluence-url"?: string;
   [key: string]: unknown;
 }
 

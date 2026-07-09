@@ -44,27 +44,40 @@ export class IdempotentPublisher {
     storageFormat: string,
     spaceKey?: string,
     tags?: string[],
-    properties?: Record<string, string>
+    properties?: Record<string, string>,
+    existingPageId?: string
   ): Promise<string> {
     const targetSpace = spaceKey || this.spaceKey;
 
-    // Search for existing page by title
-    const existingPage = await this.findPageByTitle(title, targetSpace);
+    let pageId = "";
+    let version: number | undefined;
 
-    let pageId: string;
+    if (existingPageId) {
+      // Direct update using the known page ID (from frontmatter).
+      // Faster and avoids CQL search issues entirely.
+      version = await this.getPageVersion(existingPageId);
+      if (version !== undefined) {
+        pageId = existingPageId;
+      }
+      // If version is undefined (page not found), fall through to search/create
+    }
 
-    if (existingPage) {
-      // Update existing page
-      pageId = existingPage.id;
-      await this.updatePage(pageId, title, storageFormat, existingPage.version);
-    } else {
+    if (!pageId) {
+      // Search for existing page by title
+      const existingPage = await this.findPageByTitle(title, targetSpace);
+      if (existingPage) {
+        pageId = existingPage.id;
+        version = existingPage.version;
+      }
+    }
+
+    if (pageId && version !== undefined) {
+      await this.updatePage(pageId, title, storageFormat, version);
+    } else if (!pageId) {
       // Create new page
       try {
         pageId = await this.createPage(title, storageFormat, targetSpace);
       } catch (createError: any) {
-        // If creation fails because a page with this title already exists
-        // (it could be a draft or have a status we filtered out), find it
-        // without any status filter and update it instead.
         if (
           createError.message?.includes("already exists") ||
           createError.message?.includes("A page with this title already exists")
@@ -93,6 +106,21 @@ export class IdempotentPublisher {
     }
 
     return pageId;
+  }
+
+  /**
+   * Get the current version number of a page by its ID.
+   * Returns undefined if the page doesn't exist or is inaccessible.
+   */
+  private async getPageVersion(pageId: string): Promise<number | undefined> {
+    try {
+      const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=version`;
+      const response = await this.requestWithAuth(url);
+      return response.json.version?.number;
+    } catch (e) {
+      console.warn(`Failed to get version for page ${pageId}:`, e);
+      return undefined;
+    }
   }
 
   /**

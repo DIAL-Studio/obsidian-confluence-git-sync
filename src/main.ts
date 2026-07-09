@@ -223,7 +223,10 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       const spaceKey = this.getSpaceKeyForFile(file.path);
 
       // Publish
-      const pageId = await this.publisher.publish(title, storageFormat, spaceKey, tags);
+      const existingPageId = frontmatter?.["confluence-page-id"] as string | undefined;
+      const pageId = await this.publisher.publish(
+        title, storageFormat, spaceKey, tags, undefined, existingPageId
+      );
 
       // Build Confluence URL
       const baseUrl = this.settings.confluenceBaseUrl.replace(/\/+$/, "");

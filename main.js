@@ -10519,15 +10519,27 @@ var IdempotentPublisher = class {
    * Publish a page to Confluence. Creates or updates idempotently.
    * Returns the Confluence page ID.
    */
-  async publish(title, storageFormat, spaceKey, tags, properties) {
+  async publish(title, storageFormat, spaceKey, tags, properties, existingPageId) {
     var _a, _b;
     const targetSpace = spaceKey || this.spaceKey;
-    const existingPage = await this.findPageByTitle(title, targetSpace);
-    let pageId;
-    if (existingPage) {
-      pageId = existingPage.id;
-      await this.updatePage(pageId, title, storageFormat, existingPage.version);
-    } else {
+    let pageId = "";
+    let version;
+    if (existingPageId) {
+      version = await this.getPageVersion(existingPageId);
+      if (version !== void 0) {
+        pageId = existingPageId;
+      }
+    }
+    if (!pageId) {
+      const existingPage = await this.findPageByTitle(title, targetSpace);
+      if (existingPage) {
+        pageId = existingPage.id;
+        version = existingPage.version;
+      }
+    }
+    if (pageId && version !== void 0) {
+      await this.updatePage(pageId, title, storageFormat, version);
+    } else if (!pageId) {
       try {
         pageId = await this.createPage(title, storageFormat, targetSpace);
       } catch (createError) {
@@ -10551,6 +10563,21 @@ var IdempotentPublisher = class {
       await this.applyProperties(pageId, properties);
     }
     return pageId;
+  }
+  /**
+   * Get the current version number of a page by its ID.
+   * Returns undefined if the page doesn't exist or is inaccessible.
+   */
+  async getPageVersion(pageId) {
+    var _a;
+    try {
+      const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=version`;
+      const response = await this.requestWithAuth(url);
+      return (_a = response.json.version) == null ? void 0 : _a.number;
+    } catch (e) {
+      console.warn(`Failed to get version for page ${pageId}:`, e);
+      return void 0;
+    }
   }
   /**
    * Search for a page by exact title in the given space.
@@ -17170,7 +17197,15 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
       const resolvedContent = await this.wikiLinkResolver.resolve(content, this.app.vault);
       const storageFormat = this.converter.convert(resolvedContent);
       const spaceKey = this.getSpaceKeyForFile(file.path);
-      const pageId = await this.publisher.publish(title, storageFormat, spaceKey, tags);
+      const existingPageId = frontmatter == null ? void 0 : frontmatter["confluence-page-id"];
+      const pageId = await this.publisher.publish(
+        title,
+        storageFormat,
+        spaceKey,
+        tags,
+        void 0,
+        existingPageId
+      );
       const baseUrl = this.settings.confluenceBaseUrl.replace(/\/+$/, "");
       const pageUrl = `${baseUrl}/spaces/${spaceKey}/pages/${pageId}`;
       this.lastPublished = { title, pageId, url: pageUrl };
