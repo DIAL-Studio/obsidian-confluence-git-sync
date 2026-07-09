@@ -7,7 +7,12 @@
  * 3. If not found → create it under the parent page (POST /rest/api/content)
  * 4. Apply labels after create/update
  * 5. Set page properties after create/update
+ *
+ * Uses Obsidian's requestUrl() instead of fetch() to avoid CORS restrictions
+ * (Obsidian runs on app:// protocol; browser fetch is blocked by Confluence).
  */
+
+import { requestUrl } from "obsidian";
 
 export class IdempotentPublisher {
   private baseUrl: string;
@@ -80,8 +85,8 @@ export class IdempotentPublisher {
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
     const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1`;
 
-    const response = await this.fetchWithAuth(url);
-    const data = await response.json();
+    const response = await this.requestWithAuth(url);
+    const data = response.json;
 
     if (data.results && data.results.length > 0) {
       return {
@@ -116,14 +121,13 @@ export class IdempotentPublisher {
       },
     };
 
-    const response = await this.fetchWithAuth(url, {
+    const response = await this.requestWithAuth(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
-    const data = await response.json();
-    return data.id;
+    return response.json.id;
   }
 
   /**
@@ -150,7 +154,7 @@ export class IdempotentPublisher {
       },
     };
 
-    await this.fetchWithAuth(url, {
+    await this.requestWithAuth(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -165,7 +169,7 @@ export class IdempotentPublisher {
 
     for (const tag of tags) {
       try {
-        await this.fetchWithAuth(url, {
+        await this.requestWithAuth(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prefix: "global", name: tag }),
@@ -188,7 +192,7 @@ export class IdempotentPublisher {
       const url = `${this.baseUrl}/rest/api/content/${pageId}/property`;
 
       try {
-        await this.fetchWithAuth(url, {
+        await this.requestWithAuth(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key, value: { value } }),
@@ -197,7 +201,7 @@ export class IdempotentPublisher {
         // Property might already exist — try updating instead
         try {
           const updateUrl = `${this.baseUrl}/rest/api/content/${pageId}/property/${key}`;
-          await this.fetchWithAuth(updateUrl, {
+          await this.requestWithAuth(updateUrl, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ key, value: { value } }),
@@ -209,23 +213,30 @@ export class IdempotentPublisher {
     }
   }
 
-  private async fetchWithAuth(
+  /**
+   * Make an authenticated request to Confluence using Obsidian's requestUrl().
+   * This avoids CORS restrictions that affect fetch() from app:// protocol.
+   */
+  private async requestWithAuth(
     url: string,
-    options: RequestInit = {}
-  ): Promise<Response> {
+    options: { method?: string; headers?: Record<string, string>; body?: string } = {}
+  ): Promise<{ status: number; json: any; text: string }> {
     const auth = btoa(`${this.email}:${this.apiToken}`);
-    const response = await fetch(url, {
-      ...options,
+
+    const response = await requestUrl({
+      url: url,
+      method: options.method || "GET",
       headers: {
         ...options.headers,
         Authorization: `Basic ${auth}`,
       },
+      body: options.body,
+      throw: false,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (response.status >= 400) {
       throw new Error(
-        `Confluence API error (${response.status}): ${errorText}`
+        `Confluence API error (${response.status}): ${response.text}`
       );
     }
 

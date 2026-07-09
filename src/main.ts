@@ -87,6 +87,11 @@ export default class ConfluenceGitSyncPlugin extends Plugin {
       callback: () => this.generateGithubAction(),
     });
 
+    // Ribbon icon for quick access to publish current note
+    this.addRibbonIcon("upload-cloud", "Publish current note to Confluence", () => {
+      this.publishCurrentNote();
+    });
+
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
   }
 

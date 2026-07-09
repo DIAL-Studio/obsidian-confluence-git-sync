@@ -7078,7 +7078,7 @@ __export(main_exports, {
   default: () => ConfluenceGitSyncPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // src/md-to-confluence.ts
 var MdToConfluenceConverter = class {
@@ -10506,6 +10506,7 @@ var WikiLinkResolver = class {
 };
 
 // src/idempotent-publisher.ts
+var import_obsidian = require("obsidian");
 var IdempotentPublisher = class {
   constructor(baseUrl, email, apiToken, spaceKey, parentPageId) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
@@ -10542,8 +10543,8 @@ var IdempotentPublisher = class {
   async findPageByTitle(title, spaceKey) {
     const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
     const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=1`;
-    const response = await this.fetchWithAuth(url);
-    const data = await response.json();
+    const response = await this.requestWithAuth(url);
+    const data = response.json;
     if (data.results && data.results.length > 0) {
       return {
         id: data.results[0].id,
@@ -10569,13 +10570,12 @@ var IdempotentPublisher = class {
         }
       }
     };
-    const response = await this.fetchWithAuth(url, {
+    const response = await this.requestWithAuth(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    const data = await response.json();
-    return data.id;
+    return response.json.id;
   }
   /**
    * Update an existing page.
@@ -10594,7 +10594,7 @@ var IdempotentPublisher = class {
         }
       }
     };
-    await this.fetchWithAuth(url, {
+    await this.requestWithAuth(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -10607,7 +10607,7 @@ var IdempotentPublisher = class {
     const url = `${this.baseUrl}/rest/api/content/${pageId}/label`;
     for (const tag of tags) {
       try {
-        await this.fetchWithAuth(url, {
+        await this.requestWithAuth(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prefix: "global", name: tag })
@@ -10624,7 +10624,7 @@ var IdempotentPublisher = class {
     for (const [key, value] of Object.entries(properties)) {
       const url = `${this.baseUrl}/rest/api/content/${pageId}/property`;
       try {
-        await this.fetchWithAuth(url, {
+        await this.requestWithAuth(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key, value: { value } })
@@ -10632,7 +10632,7 @@ var IdempotentPublisher = class {
       } catch (e) {
         try {
           const updateUrl = `${this.baseUrl}/rest/api/content/${pageId}/property/${key}`;
-          await this.fetchWithAuth(updateUrl, {
+          await this.requestWithAuth(updateUrl, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ key, value: { value } })
@@ -10643,19 +10643,25 @@ var IdempotentPublisher = class {
       }
     }
   }
-  async fetchWithAuth(url, options = {}) {
+  /**
+   * Make an authenticated request to Confluence using Obsidian's requestUrl().
+   * This avoids CORS restrictions that affect fetch() from app:// protocol.
+   */
+  async requestWithAuth(url, options = {}) {
     const auth = btoa(`${this.email}:${this.apiToken}`);
-    const response = await fetch(url, {
-      ...options,
+    const response = await (0, import_obsidian.requestUrl)({
+      url,
+      method: options.method || "GET",
       headers: {
         ...options.headers,
         Authorization: `Basic ${auth}`
-      }
+      },
+      body: options.body,
+      throw: false
     });
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (response.status >= 400) {
       throw new Error(
-        `Confluence API error (${response.status}): ${errorText}`
+        `Confluence API error (${response.status}): ${response.text}`
       );
     }
     return response;
@@ -16958,7 +16964,7 @@ var DEFAULT_SETTINGS = {
   includePattern: "*.md",
   folderSpaceMappings: {}
 };
-var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
+var ConfluenceGitSyncPlugin = class extends import_obsidian2.Plugin {
   async onload() {
     await this.loadSettings();
     this.converter = new MdToConfluenceConverter();
@@ -16998,6 +17004,9 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
       name: "Generate GitHub Action",
       callback: () => this.generateGithubAction()
     });
+    this.addRibbonIcon("upload-cloud", "Publish current note to Confluence", () => {
+      this.publishCurrentNote();
+    });
     this.addSettingTab(new ConfluenceGitSyncSettingTab(this.app, this));
   }
   onunload() {
@@ -17011,7 +17020,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
   async publishCurrentNote() {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
-      new import_obsidian.Notice("No active file");
+      new import_obsidian2.Notice("No active file");
       return;
     }
     await this.publishFile(activeFile);
@@ -17023,20 +17032,20 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
       return regex.test(f.name);
     });
     if (files.length === 0) {
-      new import_obsidian.Notice("No files match the include pattern");
+      new import_obsidian2.Notice("No files match the include pattern");
       return;
     }
-    new import_obsidian.Notice(`Publishing ${files.length} files...`);
+    new import_obsidian2.Notice(`Publishing ${files.length} files...`);
     for (const file of files) {
       await this.publishFile(file);
     }
-    new import_obsidian.Notice(`Published ${files.length} files`);
+    new import_obsidian2.Notice(`Published ${files.length} files`);
   }
   async publishAndCommit() {
     await this.publishAll();
     if (this.settings.autoCommitOnPublish) {
       await this.gitBridge.commitAndPush("Auto-publish via Confluence Git Sync");
-      new import_obsidian.Notice("Committed and pushed to Git");
+      new import_obsidian2.Notice("Committed and pushed to Git");
     }
   }
   async dryRun() {
@@ -17056,7 +17065,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
       summary += `  ${file.path} \u2192 "${title}" (status: ${status})
 `;
     }
-    new import_obsidian.Notice(`Dry-run complete \u2014 ${files.length} files. See console for details.`);
+    new import_obsidian2.Notice(`Dry-run complete \u2014 ${files.length} files. See console for details.`);
     console.log(summary);
   }
   async generateGithubAction() {
@@ -17075,7 +17084,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
     const adapter = this.app.vault.adapter;
     await adapter.mkdir(workflowDir);
     await adapter.write(workflowPath, yaml2);
-    new import_obsidian.Notice(`GitHub Action created at ${workflowPath}`);
+    new import_obsidian2.Notice(`GitHub Action created at ${workflowPath}`);
   }
   async publishFile(file) {
     try {
@@ -17087,9 +17096,9 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
       const storageFormat = this.converter.convert(resolvedContent);
       const spaceKey = this.getSpaceKeyForFile(file.path);
       const pageId = await this.publisher.publish(title, storageFormat, spaceKey, tags);
-      new import_obsidian.Notice(`Published "${title}" to Confluence (page ID: ${pageId})`);
+      new import_obsidian2.Notice(`Published "${title}" to Confluence (page ID: ${pageId})`);
     } catch (error) {
-      new import_obsidian.Notice(`Failed to publish "${file.name}": ${error.message}`);
+      new import_obsidian2.Notice(`Failed to publish "${file.name}": ${error.message}`);
       console.error(error);
     }
   }
@@ -17102,7 +17111,7 @@ var ConfluenceGitSyncPlugin = class extends import_obsidian.Plugin {
     return this.settings.confluenceSpaceKey;
   }
 };
-var ConfluenceGitSyncSettingTab = class extends import_obsidian.PluginSettingTab {
+var ConfluenceGitSyncSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -17112,58 +17121,58 @@ var ConfluenceGitSyncSettingTab = class extends import_obsidian.PluginSettingTab
     containerEl.empty();
     containerEl.createEl("h2", { text: "Confluence Git Sync Settings" });
     containerEl.createEl("h3", { text: "Confluence Connection" });
-    new import_obsidian.Setting(containerEl).setName("Base URL").setDesc("e.g. https://your-domain.atlassian.net/wiki").addText(
+    new import_obsidian2.Setting(containerEl).setName("Base URL").setDesc("e.g. https://your-domain.atlassian.net/wiki").addText(
       (text) => text.setPlaceholder("https://...").setValue(this.plugin.settings.confluenceBaseUrl).onChange(async (value) => {
         this.plugin.settings.confluenceBaseUrl = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Email").setDesc("Atlassian account email").addText(
+    new import_obsidian2.Setting(containerEl).setName("Email").setDesc("Atlassian account email").addText(
       (text) => text.setPlaceholder("user@example.com").setValue(this.plugin.settings.confluenceEmail).onChange(async (value) => {
         this.plugin.settings.confluenceEmail = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("API Token").setDesc("Generate at https://id.atlassian.com/manage-profile/security/api-tokens").addText((text) => {
+    new import_obsidian2.Setting(containerEl).setName("API Token").setDesc("Generate at https://id.atlassian.com/manage-profile/security/api-tokens").addText((text) => {
       text.setPlaceholder("token").setValue(this.plugin.settings.confluenceApiToken).onChange(async (value) => {
         this.plugin.settings.confluenceApiToken = value;
         await this.plugin.saveSettings();
       });
       text.inputEl.type = "password";
     });
-    new import_obsidian.Setting(containerEl).setName("Space Key").setDesc("e.g. YD, ENG").addText(
+    new import_obsidian2.Setting(containerEl).setName("Space Key").setDesc("e.g. YD, ENG").addText(
       (text) => text.setPlaceholder("YD").setValue(this.plugin.settings.confluenceSpaceKey).onChange(async (value) => {
         this.plugin.settings.confluenceSpaceKey = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Parent Page ID").setDesc("Page ID under which new pages are created").addText(
+    new import_obsidian2.Setting(containerEl).setName("Parent Page ID").setDesc("Page ID under which new pages are created").addText(
       (text) => text.setPlaceholder("6409158661").setValue(this.plugin.settings.confluenceParentPageId).onChange(async (value) => {
         this.plugin.settings.confluenceParentPageId = value;
         await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h3", { text: "Git Settings" });
-    new import_obsidian.Setting(containerEl).setName("Repo path").setDesc("Local path to the git repository").addText(
+    new import_obsidian2.Setting(containerEl).setName("Repo path").setDesc("Local path to the git repository").addText(
       (text) => text.setPlaceholder("/path/to/repo").setValue(this.plugin.settings.gitRepoPath).onChange(async (value) => {
         this.plugin.settings.gitRepoPath = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Branch").addText(
+    new import_obsidian2.Setting(containerEl).setName("Branch").addText(
       (text) => text.setPlaceholder("main").setValue(this.plugin.settings.gitBranch).onChange(async (value) => {
         this.plugin.settings.gitBranch = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Auto-commit on publish").setDesc("Automatically commit and push after publishing").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Auto-commit on publish").setDesc("Automatically commit and push after publishing").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoCommitOnPublish).onChange(async (value) => {
         this.plugin.settings.autoCommitOnPublish = value;
         await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h3", { text: "Publishing" });
-    new import_obsidian.Setting(containerEl).setName("Include pattern").setDesc("Glob pattern for files to publish (e.g. prds/B-*.md)").addText(
+    new import_obsidian2.Setting(containerEl).setName("Include pattern").setDesc("Glob pattern for files to publish (e.g. prds/B-*.md)").addText(
       (text) => text.setPlaceholder("*.md").setValue(this.plugin.settings.includePattern).onChange(async (value) => {
         this.plugin.settings.includePattern = value;
         await this.plugin.saveSettings();
