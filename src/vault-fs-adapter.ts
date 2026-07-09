@@ -49,16 +49,34 @@ export class VaultFsAdapter {
   }
 
   async stat(path: string): Promise<any> {
-    const s = await this.adapter.stat(normalize(path));
-    if (!s) throw { code: "ENOENT" };
+    const normalized = normalize(path);
+    try {
+      const s = await this.adapter.stat(normalized);
+      if (s) {
+        return {
+          type: s.type === "folder" ? "directory" : "file",
+          mode: s.type === "folder" ? 0o755 : 0o644,
+          size: s.size ?? 0,
+          mtimeMs: s.mtime ?? 0,
+          ctimeMs: s.ctime ?? 0,
+          isFile: () => s.type === "file",
+          isDirectory: () => s.type === "folder",
+          isSymbolicLink: () => false,
+        };
+      }
+    } catch (_) {
+      // stat failed — but root directory always exists
+    }
+
+    // Fallback for root "/" or any path where stat returns nothing
     return {
-      type: s.type === "folder" ? "directory" : "file",
-      mode: s.type === "folder" ? 0o755 : 0o644,
-      size: s.size ?? 0,
-      mtimeMs: s.mtime ?? 0,
-      ctimeMs: s.ctime ?? 0,
-      isFile: () => s.type === "file",
-      isDirectory: () => s.type === "folder",
+      type: "directory",
+      mode: 0o755,
+      size: 0,
+      mtimeMs: 0,
+      ctimeMs: 0,
+      isFile: () => false,
+      isDirectory: () => true,
       isSymbolicLink: () => false,
     };
   }

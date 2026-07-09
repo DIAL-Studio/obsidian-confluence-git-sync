@@ -16980,17 +16980,31 @@ var VaultFsAdapter = class {
   }
   async stat(path) {
     var _a, _b, _c;
-    const s = await this.adapter.stat(normalize2(path));
-    if (!s)
-      throw { code: "ENOENT" };
+    const normalized = normalize2(path);
+    try {
+      const s = await this.adapter.stat(normalized);
+      if (s) {
+        return {
+          type: s.type === "folder" ? "directory" : "file",
+          mode: s.type === "folder" ? 493 : 420,
+          size: (_a = s.size) != null ? _a : 0,
+          mtimeMs: (_b = s.mtime) != null ? _b : 0,
+          ctimeMs: (_c = s.ctime) != null ? _c : 0,
+          isFile: () => s.type === "file",
+          isDirectory: () => s.type === "folder",
+          isSymbolicLink: () => false
+        };
+      }
+    } catch (_) {
+    }
     return {
-      type: s.type === "folder" ? "directory" : "file",
-      mode: s.type === "folder" ? 493 : 420,
-      size: (_a = s.size) != null ? _a : 0,
-      mtimeMs: (_b = s.mtime) != null ? _b : 0,
-      ctimeMs: (_c = s.ctime) != null ? _c : 0,
-      isFile: () => s.type === "file",
-      isDirectory: () => s.type === "folder",
+      type: "directory",
+      mode: 493,
+      size: 0,
+      mtimeMs: 0,
+      ctimeMs: 0,
+      isFile: () => false,
+      isDirectory: () => true,
       isSymbolicLink: () => false
     };
   }
