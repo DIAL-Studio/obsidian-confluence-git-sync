@@ -280,28 +280,28 @@ export class IdempotentPublisher {
   }
 
   /**
-   * Fallback search that returns a page regardless of status.
-   * Used when createPage fails with "already exists" — the page might be
-   * in an unexpected status (e.g. draft) that findPageByTitle filtered out.
+   * Fallback search that bypasses the broken CQL space filter.
+   * Searches by title only and validates space + status in JavaScript.
+   * Used when createPage fails with "already exists".
    */
   private async findPageByTitleFallback(
     title: string,
     spaceKey: string
   ): Promise<{ id: string; version: number } | null> {
-    const cql = encodeURIComponent(`title="${title}" AND space="${spaceKey}"`);
-    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=5&expand=version&status=any`;
+    const cql = encodeURIComponent(`title="${title}"`);
+    const url = `${this.baseUrl}/rest/api/content?cql=${cql}&limit=10&expand=version,space`;
 
     try {
       const response = await this.requestWithAuth(url);
       const data = response.json;
 
       if (data.results && data.results.length > 0) {
-        // Skip archived/trashed — same filter as findPageByTitle
         const page = data.results.find(
           (p: any) =>
             p.id &&
             p.status !== "archived" &&
-            p.status !== "trashed"
+            p.status !== "trashed" &&
+            p.space?.key === spaceKey
         );
         if (page) {
           return {
