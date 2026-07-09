@@ -10567,7 +10567,9 @@ var IdempotentPublisher = class {
     const data = response.json;
     if (data.results && data.results.length > 0) {
       const currentPages = data.results.filter(
-        (p) => p.id && p.status !== "archived" && p.status !== "trashed"
+        (p) => p.id && p.status !== "archived" && p.status !== "trashed" && // Validate title matches — CQL on our instance sometimes returns
+        // pages with wrong titles (e.g. archived pages from other spaces)
+        p.title === title
       );
       if (currentPages.length === 0) {
         return null;
@@ -10684,7 +10686,7 @@ var IdempotentPublisher = class {
       const data = response.json;
       if (data.results && data.results.length > 0) {
         const page = data.results.find(
-          (p) => p.id && p.status !== "archived" && p.status !== "trashed"
+          (p) => p.id && p.status !== "archived" && p.status !== "trashed" && p.title === title
         );
         if (page) {
           return {

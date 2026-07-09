@@ -116,7 +116,13 @@ export class IdempotentPublisher {
       // Only exclude archived and trashed pages — draft pages are updatable
       // and should not trigger duplicate-tile errors on create
       const currentPages = data.results.filter(
-        (p: any) => p.id && p.status !== "archived" && p.status !== "trashed"
+        (p: any) =>
+          p.id &&
+          p.status !== "archived" &&
+          p.status !== "trashed" &&
+          // Validate title matches — CQL on our instance sometimes returns
+          // pages with wrong titles (e.g. archived pages from other spaces)
+          p.title === title
       );
 
       if (currentPages.length === 0) {
@@ -267,7 +273,11 @@ export class IdempotentPublisher {
       if (data.results && data.results.length > 0) {
         // Skip archived/trashed — same filter as findPageByTitle
         const page = data.results.find(
-          (p: any) => p.id && p.status !== "archived" && p.status !== "trashed"
+          (p: any) =>
+            p.id &&
+            p.status !== "archived" &&
+            p.status !== "trashed" &&
+            p.title === title
         );
         if (page) {
           return {
